@@ -1,0 +1,4 @@
+cpp/build/
+*.o
+.vscode/
+__pycache__/
