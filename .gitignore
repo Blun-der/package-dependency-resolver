@@ -2,3 +2,5 @@ cpp/build/
 *.o
 .vscode/
 __pycache__/
+report/node_modules/
+report/build/

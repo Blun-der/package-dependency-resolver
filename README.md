@@ -226,7 +226,7 @@ list says "check before deleting", and why `entry rich/_unicode_data` exists.
 ### Critical files with bitsets
 
 "How many files break if this file changes?" is the number of files that reach it. One BFS per file
-answers it in O(V · (V + E)). The C++ version gets the same numbers about 25 times faster:
+answers it in O(V · (V + E)). The C++ version gets the same numbers 22 to 33 times faster:
 
 1. Tarjan's algorithm on all imports gives the strongly connected components, dependencies first.
    Collapsed into one node each, they form a graph with no loops.
@@ -286,7 +286,7 @@ and `.png`. Results on an AMD Ryzen AI 7 350, g++ -O2:
 - Kahn's algorithm grows a little faster: the min-heap adds the log V of O(V log V + E).
 - Our `HashMap` finds keys faster than `std::unordered_map` (139 ms against 229 ms for a million present
   and a million missing keys) and inserts a little slower (482 ms against 465 ms).
-- The critical-files ranking with bitsets is 22 to 30 times faster than one BFS per file:
+- The critical-files ranking with bitsets is 22 to 33 times faster than one BFS per file:
 
   | Files | One BFS per file | Bitsets |
   |---|---|---|
