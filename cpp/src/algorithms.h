@@ -1,6 +1,7 @@
 // Package Dependency Resolver - graph algorithms
 #pragma once
 
+#include <cstddef>
 #include <optional>
 #include <utility>
 #include <vector>
@@ -13,8 +14,23 @@ using Component = std::vector<int>;  // node ids, sorted by name
 
 // Tarjan's strongly connected components, iterative (no recursion limit).
 // Every component with 2+ files is a group of files that import each other
-// in a loop. O(V + E).
+// in a loop. A component comes out only after every component it imports,
+// so the list is in dependencies-first order. O(V + E).
 std::vector<Component> tarjanSCC(const Graph& graph);
+
+// For every file, how many files it needs (directly or not) and how many
+// files need it: the same numbers as one BFS per file, O(V * (V + E)), but
+// computed with bitsets on the graph of components, which has no loops.
+// Going through the components dependencies first, a component reaches its
+// own files (if it is a loop) plus everything each imported component reaches:
+// one OR of 64-bit words per link handles 64 files at once. The files are
+// done in slices so memory stays small, giving O(V / 64 * (V + E)) time and
+// O(components * slice) memory.
+struct ReachCounts {
+    std::vector<int> dependencies;  // node id -> files it needs
+    std::vector<int> dependents;    // node id -> files that need it
+};
+ReachCounts reachCounts(const Graph& graph, size_t memoryLimit = 64u << 20);  // bytes of bitsets
 
 // Which imports to remove so a group of files that import each other in a
 // loop has no loop left. Greedy: repeatedly remove the one import that leaves

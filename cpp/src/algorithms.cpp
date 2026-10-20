@@ -1,6 +1,7 @@
 #include "algorithms.h"
 
 #include <algorithm>
+#include <bitset>
 #include <cstdint>
 #include <set>
 #include <utility>
@@ -184,6 +185,67 @@ std::vector<int> reachable(const Graph& graph, int start, bool reverse) {
     }
     queue.erase(queue.begin());  // drop start itself
     return queue;
+}
+
+namespace {
+
+// How many nodes each node reaches, following out-edges (reverse = false) or
+// in-edges. `sccs` must be in dependencies-first order (as tarjanSCC gives).
+std::vector<int> countReach(const Graph& graph, const std::vector<Component>& sccs,
+                            const std::vector<int>& compOf, bool reverse, size_t memoryLimit) {
+    const int n = graph.size();
+    const int comps = static_cast<int>(sccs.size());
+    // Each component gets a row of `words` 64-bit words: bit k set = node
+    // (first + k) of the current slice is in the component or reached from
+    // it. Every file's count is then the bits of its row minus itself (a file
+    // in a loop does reach itself, but BFS does not count the start). All rows
+    // together stay under memoryLimit; small projects take everything in one slice.
+    const size_t maxWords = std::max<size_t>(1, memoryLimit / 8 / std::max(comps, 1));
+    const size_t words = std::min<size_t>((n + 63) / 64, maxWords);
+    const int slice = static_cast<int>(words * 64);
+    std::vector<std::uint64_t> rows(static_cast<size_t>(comps) * words);
+    std::vector<int> count(n, 0);
+
+    // Components to visit so that every component's links are done first:
+    // dependencies first when following imports, the other way round for importers.
+    std::vector<int> visitOrder(comps);
+    for (int i = 0; i < comps; i++) visitOrder[i] = reverse ? comps - 1 - i : i;
+
+    for (int first = 0; first < n; first += slice) {
+        std::fill(rows.begin(), rows.end(), 0);
+        auto setBit = [&](int comp, int node) {
+            if (node < first || node >= first + slice) return;
+            const int k = node - first;
+            rows[comp * words + k / 64] |= std::uint64_t{1} << (k % 64);
+        };
+        for (int c : visitOrder) {
+            std::uint64_t* row = &rows[c * words];
+            for (int f : sccs[c]) setBit(c, f);
+            for (int f : sccs[c]) {
+                for (const Edge& e : reverse ? graph.in(f) : graph.out(f)) {
+                    const int d = compOf[e.to];
+                    if (d == c) continue;
+                    const std::uint64_t* other = &rows[d * words];
+                    for (size_t w = 0; w < words; w++) row[w] |= other[w];
+                }
+            }
+            int bits = 0;
+            for (size_t w = 0; w < words; w++) bits += static_cast<int>(std::bitset<64>(row[w]).count());
+            for (int f : sccs[c]) count[f] += bits;
+        }
+    }
+    for (int& c : count) c--;  // the file itself
+    return count;
+}
+
+}  // namespace
+
+ReachCounts reachCounts(const Graph& graph, size_t memoryLimit) {
+    const std::vector<Component> sccs = tarjanSCC(graph);
+    std::vector<int> compOf(graph.size());
+    for (size_t i = 0; i < sccs.size(); i++)
+        for (int f : sccs[i]) compOf[f] = static_cast<int>(i);
+    return {countReach(graph, sccs, compOf, false, memoryLimit), countReach(graph, sccs, compOf, true, memoryLimit)};
 }
 
 BuildOrder buildOrder(const Graph& graph, const std::vector<Component>& sccs) {

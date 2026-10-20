@@ -159,6 +159,23 @@ load-time loops that work only because of the order of the lines, the situation 
 flag. Flask's example is the well-known Flask pattern: `__init__.py` creates `app` and then imports
 `views`, which imports `app` back. Moving that import above `app = Flask(__name__)` breaks it.
 
+### Critical files with bitsets
+
+"How many files break if this file changes?" is the number of files that reach it. One BFS per file
+answers it in O(V · (V + E)). The C++ version gets the same numbers about 25 times faster:
+
+1. Tarjan's algorithm on all imports gives the strongly connected components, dependencies first.
+   Collapsed into one node each, they form a graph with no loops.
+2. Each component gets a row of bits, one bit per file: the files in the component plus every file it
+   reaches. Going through the components dependencies first, a component's row is its own files OR the
+   row of every component it imports, and those rows are already finished.
+3. A file's count is the number of set bits in its component's row, minus the file itself. The same pass
+   in reverse order, following importers, gives the other direction.
+
+One OR of two 64-bit words handles 64 files at once. For big projects the files are done in slices so all
+rows together stay under 64 MB. A test checks the result against one BFS per file on 20 random graphs
+with loops, in one slice and in slices of 64 files.
+
 ### Suggested cycle fixes
 
 For each group of files that import each other in a loop (one strongly connected component), the tool
@@ -197,16 +214,27 @@ and `.png`. Results on an AMD Ryzen AI 7 350, g++ -O2:
 
 | Files | Import links | Tarjan | Kahn + min-heap | One BFS |
 |---|---|---|---|---|
-| 10,000 | 28,111 | 2 ms | 4 ms | 0.2 ms |
-| 100,000 | 281,291 | 24 ms | 134 ms | 4 ms |
-| 1,000,000 | 2,812,718 | 322 ms | 2,088 ms | 73 ms |
+| 10,000 | 28,111 | 1 ms | 4 ms | 0.2 ms |
+| 100,000 | 281,291 | 24 ms | 136 ms | 4 ms |
+| 1,000,000 | 2,812,718 | 323 ms | 2,080 ms | 71 ms |
 
 - Tarjan's algorithm and BFS grow in step with V + E, as O(V + E) predicts.
 - Kahn's algorithm grows a little faster: the min-heap adds the log V of O(V log V + E).
-- Our `HashMap` finds keys faster than `std::unordered_map` (144 ms against 232 ms for a million present
-  and a million missing keys) and inserts a little slower (499 ms against 467 ms).
-- The whole analysis (parsing, resolving, every algorithm) takes 3 ms for 550 files and 366 ms for
-  11,000 files: 20 times the files, about 110 times the time, because of the O(V · (V + E)) ranking.
+- Our `HashMap` finds keys faster than `std::unordered_map` (139 ms against 229 ms for a million present
+  and a million missing keys) and inserts a little slower (482 ms against 465 ms).
+- The critical-files ranking with bitsets is 22 to 30 times faster than one BFS per file:
+
+  | Files | One BFS per file | Bitsets |
+  |---|---|---|
+  | 1,000 | 4.6 ms | 0.2 ms |
+  | 10,000 | 298 ms | 9.8 ms |
+  | 20,000 | 1,111 ms | 50 ms |
+  | 100,000 | (not run) | 2,029 ms |
+
+  Both are O(V · (V + E)) in the worst case; bitsets divide it by 64 (one machine word holds 64 files),
+  and the rest of the gap to 64 is the work outside the word operations.
+- The whole analysis (reading imports, resolving them, every algorithm) takes 67 ms for 11,000 files
+  (366 ms with one BFS per file) and 3.5 s for 110,000 files.
 
 Timings change from machine to machine and run to run; the shapes of the curves are what matter.
 
@@ -283,6 +311,7 @@ An edge **A → B** means "file A imports file B".
 | Queue | BFS | shortest chains and reachability |
 | Trie | file search box and path finder | prefix search in O(length of what you typed) |
 | Set | visited nodes, deduplication | O(1) membership tests |
+| Bitset (C++) | which files each component reaches, 64 files per machine word | one OR handles 64 files |
 
 ### Algorithms and complexity (V = files, E = import links)
 
@@ -293,7 +322,7 @@ An edge **A → B** means "file A imports file B".
 | Build order | condense each cycle to one unit, then Kahn's topological sort with a min-heap | O(V log V + E) |
 | Layers | layer = 1 + max layer of the files it imports, computed during Kahn's | O(V + E) |
 | Impact of a change | BFS on the reverse graph | O(V + E) per file |
-| Critical files ranking | the BFS above for every file | O(V · (V + E)) |
+| Critical files ranking | bitsets over the components in Tarjan's order (C++); the BFS above for every file (web) | O(V / 64 · (V + E)) |
 | Why A needs B | BFS with parent pointers gives the shortest chain | O(V + E) |
 | Graph drawing | files placed in columns by layer, rows reordered by barycenter sweeps to reduce crossing lines | O(sweeps · E log V) |
 
@@ -351,8 +380,8 @@ Folders such as `node_modules`, `venv`, `.git`, `__pycache__`, `dist` and `build
 - Python's implicit import of parent packages (`import a.b` also runs `a/__init__.py`) is not drawn as a
   separate edge.
 - Path aliases other than `@/` and `~/` (custom `tsconfig` paths) are reported as external packages.
-- The critical-files ranking is O(V · (V + E)); `make bench` measures 0.37 s for 11,000 files, and
-  the time grows faster than linearly, so very large projects are slow.
+- The critical-files ranking is still O(V · (V + E)) in the worst case, only 64 times smaller: about
+  2 s for 100,000 files, growing faster than linearly.
 - An import inside a plain `if` counts as load time even when the condition is false on this machine
   (click's Windows-only import, above): the tool cannot know which branch runs.
 - In JavaScript, a `require()` inside a function is still counted as load time; only `import()` and
@@ -364,5 +393,6 @@ Folders such as `node_modules`, `venv`, `.git`, `__pycache__`, `dist` and `build
 - Check installed package versions against version constraints (backtracking resolver).
 - Support more languages (Java, Go) and C/C++ include folders from `compile_commands.json`.
 - Bring the C++-only features (C/C++ files, load-time cycles, cycle fixes, graph export) to the web version.
-- Rank critical files faster: the strongly connected components form a DAG, so dependents could be
-  counted per component instead of one BFS per file.
+- Estimate the critical-files ranking for huge projects instead of counting exactly: no known exact
+  method is much faster than the bitsets in general, while estimates (Cohen's size-estimation method,
+  1997) run in near-linear time.

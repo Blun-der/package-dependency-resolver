@@ -7,8 +7,8 @@
 //
 //   graph      Tarjan's SCC, Kahn's build order, one BFS     expected O(V + E)
 //   hashmap    our HashMap against std::unordered_map        expected O(1) per operation
-//   analyze    the whole pipeline on generated Python files  O(V * (V + E)), because of
-//                                                            the critical-files ranking
+//   ranking    critical files: one BFS per file vs bitsets   O(V * (V + E)) vs O(V / 64 * (V + E))
+//   analyze    the whole pipeline on generated Python files
 //
 // The projects are generated with a fixed seed, so every run measures the same
 // graphs. Each time is the median of several runs.
@@ -142,10 +142,31 @@ void benchHashMap(std::FILE* csv) {
     }
 }
 
+void benchRanking(std::FILE* csv) {
+    std::cerr << "\n  Critical-files ranking: one BFS each way per file vs bitsets (median of 3 runs)\n"
+              << "        files      links      bfs ms   bitset ms\n";
+    for (int files : {1000, 2500, 5000, 10000, 20000, 40000, 60000, 80000, 100000}) {
+        std::mt19937 rng(42);
+        const Graph g = buildGraph(files, generateLinks(files, rng));
+        double bfs = -1;  // too slow past 20,000 files to be worth waiting for
+        if (files <= 20000) {
+            bfs = medianMs(3, [&] {
+                for (int v = 0; v < files; v++) {
+                    reachable(g, v, true);
+                    reachable(g, v, false);
+                }
+            });
+        }
+        const double bits = medianMs(3, [&] { reachCounts(g); });
+        std::fprintf(csv, "ranking,%d,%d,%.3f,%.3f\n", files, g.edgeCount(), bfs, bits);
+        std::fprintf(stderr, "  %11d %10d %11.1f %11.1f\n", files, g.edgeCount(), bfs, bits);
+    }
+}
+
 void benchAnalyze(std::FILE* csv) {
     std::cerr << "\n  Whole analysis of generated Python projects (median of 3 runs)\n"
               << "        files      links    total ms\n";
-    for (int files : {500, 1000, 2000, 4000, 6000, 8000, 10000}) {
+    for (int files : {1000, 5000, 10000, 25000, 50000, 75000, 100000}) {
         std::mt19937 rng(42);
         const std::vector<Link> links = generateLinks(files, rng);
         const std::vector<SourceFile> sources = generateSources(files, links);
@@ -166,9 +187,11 @@ int main(int argc, char** argv) {
     }
     std::fprintf(csv, "# graph,files,links,tarjan_ms,kahn_ms,bfs_ms\n"
                       "# hashmap,n,ours_insert_ms,std_insert_ms,ours_find_ms,std_find_ms\n"
+                      "# ranking,files,links,bfs_ms (-1 = not run),bitset_ms\n"
                       "# analyze,files,links,total_ms\n");
     benchGraph(csv);
     benchHashMap(csv);
+    benchRanking(csv);
     benchAnalyze(csv);
     if (csv != stdout) std::fclose(csv);
     return 0;

@@ -2,6 +2,7 @@
 // Build and run with:  make test     (or: ./build/pdr_tests ../sample/fad_demo)
 #include <algorithm>
 #include <iostream>
+#include <random>
 #include <sstream>
 #include <string>
 #include <vector>
@@ -417,6 +418,31 @@ Strings planOf(const Graph& g) {
     return out;
 }
 
+// Random graphs with loops: the bitset counts must equal one BFS per file,
+// in one slice and when memory is so tight that every slice is 64 files.
+void reachCountsMatchBfs() {
+    std::mt19937 rng(7);
+    for (int round = 0; round < 20; round++) {
+        const int n = 1 + static_cast<int>(rng() % 300);
+        Graph g;
+        for (int i = 0; i < n; i++) g.addNode("f" + std::to_string(i));
+        const int links = static_cast<int>(rng() % (3 * n + 1));
+        for (int k = 0; k < links; k++) {
+            const int a = static_cast<int>(rng() % n), b = static_cast<int>(rng() % n);
+            if (a != b) g.addEdge(a, b, {1, ""});
+        }
+        for (size_t limit : {size_t{64} << 20, size_t{1}}) {
+            const ReachCounts rc = reachCounts(g, limit);
+            bool same = true;
+            for (int v = 0; v < n; v++) {
+                same = same && rc.dependencies[v] == static_cast<int>(reachable(g, v, false).size());
+                same = same && rc.dependents[v] == static_cast<int>(reachable(g, v, true).size());
+            }
+            CHECK(same);
+        }
+    }
+}
+
 void cycleFixPlans() {
     // b -> c is in both loops (a>b>c>a and b>c>b): removing it alone fixes everything
     CHECK_EQ(planOf(graphOf({{"a", "b"}, {"b", "c"}, {"c", "a"}, {"c", "b"}})), (Strings{"b>c"}));
@@ -530,6 +556,7 @@ int main(int argc, char** argv) {
         {"build order is valid on a long chain (no recursion limit)", buildOrderLongChain},
         {"shortest path and reachability", shortestPathAndReachability},
         {"cycle fix: shared link, two loops, stability tie-break, limit", cycleFixPlans},
+        {"bitset reach counts equal one BFS per file (random graphs, sliced)", reachCountsMatchBfs},
         {"python resolution: packages, relative, src layout, externals, broken", pythonResolution},
         {"cycles use load-time imports only; package-local names do not shadow the stdlib", loadTimeCycles},
         {"js resolution: extensions, index files, aliases, packages", jsResolution},

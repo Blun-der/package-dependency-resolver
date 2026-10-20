@@ -2,8 +2,8 @@
 
     python3 bench/plot.py build/bench.csv build
 
-Writes bench-graph.svg, bench-hash-find.svg, bench-hash-insert.svg and
-bench-analyze.svg (and a .png of each when rsvg-convert is installed).
+Writes bench-graph.svg, bench-hash-find.svg, bench-hash-insert.svg,
+bench-ranking.svg and bench-analyze.svg (and a .png of each when rsvg-convert is installed).
 Plain SVG, no plotting library needed.
 """
 import csv
@@ -102,14 +102,14 @@ def line_chart(path, title, subtitle, x_label, y_label, series):
         d = " ".join(f"{'M' if j == 0 else 'L'}{px(x):.1f},{py(y):.1f}" for j, (x, y) in enumerate(pts))
         out.append(f'<path d="{d}" fill="none" stroke="{color}" stroke-width="2" stroke-linejoin="round"/>')
         out.extend(marker(shape, px(x), py(y), color) for x, y in pts)
-        ends.append([py(pts[-1][1]), name, i])
+        ends.append([py(pts[-1][1]), name, i, px(pts[-1][0])])
     ends.sort()
     if len(series) == 1:
         ends = []
     for j in range(1, len(ends)):
         ends[j][0] = max(ends[j][0], ends[j - 1][0] + 17)
-    for y, name, i in ends:
-        out.append(f'<text x="{LEFT + pw + 12}" y="{y + 4:.1f}" font-size="12.5" fill="{TEXT}">{name}</text>')
+    for y, name, i, x in ends:
+        out.append(f'<text x="{x + 12:.1f}" y="{y + 4:.1f}" font-size="12.5" fill="{TEXT}">{name}</text>')
 
     out.append("</svg>")
     Path(path).write_text("\n".join(out) + "\n")
@@ -120,7 +120,7 @@ def line_chart(path, title, subtitle, x_label, y_label, series):
 def main():
     if len(sys.argv) != 3:
         sys.exit("usage: plot.py <bench.csv> <output-folder>")
-    rows = {"graph": [], "hashmap": [], "analyze": []}
+    rows = {"graph": [], "hashmap": [], "ranking": [], "analyze": []}
     with open(sys.argv[1]) as f:
         for row in csv.reader(line for line in f if not line.startswith("#")):
             rows[row[0]].append([float(v) for v in row[1:]])
@@ -149,13 +149,21 @@ def main():
                [("Our HashMap", [(n / 1e6, oi) for n, oi, _, _, _ in h]),
                 ("std::unordered_map", [(n / 1e6, si) for n, _, si, _, _ in h])])
 
+    r = rows["ranking"]
+    line_chart(out / "bench-ranking.svg",
+               "Critical-files ranking: bitsets against one BFS per file",
+               "Counting what every file needs and is needed by, median of 3 runs (BFS stopped at 20,000 files)",
+               "Files in the project (thousands)", "Time (ms)",
+               [("Bitsets", [(v / 1e3, b) for v, _, _, b in r]),
+                ("One BFS per file", [(v / 1e3, f) for v, _, f, _ in r if f >= 0])])
+
     a = rows["analyze"]
     line_chart(out / "bench-analyze.svg",
-               "Whole analysis grows faster than linearly",
-               "The critical-files ranking runs one BFS per file: O(V × (V + E)), median of 3 runs",
+               "Whole analysis of generated Python projects",
+               "Reading imports, resolving them and every algorithm, median of 3 runs",
                "Files in the project (thousands)", "Time (ms)",
                [("Whole analysis", [(v / 1e3, ms) for v, _, ms in a])])
-    print(f"wrote bench-graph, bench-hash-find, bench-hash-insert and bench-analyze (.svg/.png) to {out}")
+    print(f"wrote bench-graph, bench-hash-find, bench-hash-insert, bench-ranking and bench-analyze (.svg/.png) to {out}")
 
 
 if __name__ == "__main__":

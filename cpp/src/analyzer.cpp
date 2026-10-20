@@ -177,13 +177,14 @@ Result analyze(std::vector<SourceFile> files, const AnalyzeOptions& options) {
         maxLayer = std::max(maxLayer, u.layer);
     }
 
-    // Per-file metrics: one BFS each way per file -> O(V * (V + E))
+    // Per-file metrics: how many files each file needs and is needed by, with bitsets
+    const ReachCounts reach = reachCounts(graph);
     for (int id = 0; id < graph.size(); id++) {
         Metrics m;
         m.fanOut = static_cast<int>(graph.out(id).size());
         m.fanIn = static_cast<int>(graph.in(id).size());
-        m.dependents = static_cast<int>(reachable(graph, id, true).size());
-        m.dependencies = static_cast<int>(reachable(graph, id, false).size());
+        m.dependents = reach.dependents[id];
+        m.dependencies = reach.dependencies[id];
         m.layer = bo.layerOf[id];
         m.inCycle = sccs[bo.compOf[id]].size() > 1;
         r.metrics.push_back(m);
