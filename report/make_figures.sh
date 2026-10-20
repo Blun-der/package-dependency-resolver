@@ -1,6 +1,6 @@
 #!/bin/sh
 # Builds every figure of the report into report/build/fig/.
-#   sh report/make_figures.sh        (needs: make -C cpp, graphviz, ImageMagick)
+#   sh report/make_figures.sh        (needs: graphviz, ImageMagick, rsvg-convert; make -C cpp bench once)
 set -e
 HERE=$(cd "$(dirname "$0")" && pwd)
 ROOT=$(dirname "$HERE")
@@ -57,8 +57,8 @@ echo 'def zip_folder(*a): pass' >"$COPY/fad/actions/compress.py"
 } >"$TMP/python-vs-pdr.txt"
 shot python-vs-pdr "$TMP/python-vs-pdr.txt"
 
-# benchmark charts (from the last make bench run)
-if [ -f "$ROOT/cpp/build/bench.csv" ]; then
-    python3 "$ROOT/cpp/bench/plot.py" "$ROOT/cpp/build/bench.csv" "$OUT" >/dev/null
-fi
+# benchmark charts, redrawn by the C++ benchmark from the last make bench run
+make -s -C "$ROOT/cpp" build/pdr_bench
+"$ROOT/cpp/build/pdr_bench" --charts "$ROOT/cpp/build/bench.csv" "$OUT"
+for svg in "$OUT"/bench-*.svg; do rsvg-convert -z 2 -o "${svg%.svg}.png" "$svg"; done
 echo "figures in $OUT"

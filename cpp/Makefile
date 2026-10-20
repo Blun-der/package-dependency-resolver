@@ -5,6 +5,7 @@
 #   make graph    draw the sample and this program as SVG (needs graphviz)
 #   make bench    time the algorithms on generated projects -> build/bench.csv + charts
 #   make install  copy pdr to ~/.local/bin, so "pdr" works in any folder
+#   make dist     the source zip to hand in -> build/$(DIST).zip (from a git checkout)
 #   make uninstall
 #   make clean
 
@@ -17,6 +18,7 @@ ENGINE  = src/util.cpp src/parser.cpp src/graph.cpp src/trie.cpp \
 HEADERS = $(wildcard src/*.h)
 SAMPLE  = ../sample/fad_demo
 PREFIX ?= $(HOME)/.local
+DIST    ?= v5-package-dependency-resolver
 
 all: build/pdr
 
@@ -30,13 +32,12 @@ build/pdr_tests: $(ENGINE) tests/engine_tests.cpp $(HEADERS)
 	@mkdir -p build
 	$(CXX) $(CXXFLAGS) -Wno-free-nonheap-object -o $@ $(ENGINE) tests/engine_tests.cpp
 
-build/pdr_bench: $(ENGINE) bench/bench.cpp $(HEADERS)
+build/pdr_bench: $(ENGINE) bench/bench.cpp bench/chart.h $(HEADERS)
 	@mkdir -p build
 	$(CXX) $(CXXFLAGS) -o $@ $(ENGINE) bench/bench.cpp
 
 bench: build/pdr_bench
-	./build/pdr_bench build/bench.csv
-	python3 bench/plot.py build/bench.csv build
+	./build/pdr_bench build
 
 test: build/pdr_tests build/pdr
 	./build/pdr_tests $(SAMPLE)
@@ -60,7 +61,17 @@ install: build/pdr
 uninstall:
 	rm -f $(DESTDIR)$(PREFIX)/bin/pdr
 
+# The program, its tests and benchmark, and the sample, from the last commit
+# (so nothing untracked or half-edited gets in), with packaging/README.md as
+# the README at the top of the zip.
+dist:
+	@git -C .. diff --quiet HEAD -- cpp sample || echo "warning: uncommitted changes in cpp/ or sample/ are not in the zip"
+	@mkdir -p build
+	git -C .. archive --format=zip --prefix=$(DIST)/ --add-file=cpp/packaging/README.md \
+		-o cpp/build/$(DIST).zip HEAD cpp/src cpp/tests cpp/bench cpp/Makefile cpp/pdr.rules sample
+	@echo "wrote build/$(DIST).zip"
+
 clean:
 	rm -rf build
 
-.PHONY: all test demo graph bench install uninstall clean
+.PHONY: all test demo graph bench install uninstall dist clean

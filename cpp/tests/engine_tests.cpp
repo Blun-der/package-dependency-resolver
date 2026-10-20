@@ -1,6 +1,8 @@
 // Package Dependency Resolver - tests
 // Build and run with:  make test     (or: ./build/pdr_tests ../sample/fad_demo)
 #include <algorithm>
+#include <cctype>
+#include <cstring>
 #include <iostream>
 #include <random>
 #include <sstream>
@@ -11,6 +13,7 @@
 #include "../src/analyzer.h"
 #include "../src/dot_export.h"
 #include "../src/hash_map.h"
+#include "../src/json_report.h"
 #include "../src/min_heap.h"
 #include "../src/path_trie.h"
 #include "../src/rules.h"
@@ -544,6 +547,120 @@ void cycleFixPlans() {
     CHECK(!cycleBreakingPlan(g, tarjanSCC(g)[0], 1).has_value());
 }
 
+// ---------- JSON output ----------
+
+// A small recursive-descent JSON checker: true if `s` is exactly one valid JSON value.
+class JsonChecker {
+public:
+    explicit JsonChecker(const std::string& s) : s_(s) {}
+    bool valid() {
+        space();
+        if (!value()) return false;
+        space();
+        return i_ == s_.size();
+    }
+
+private:
+    bool value() {
+        if (i_ >= s_.size()) return false;
+        const char c = s_[i_];
+        if (c == '{') return list('}', true);
+        if (c == '[') return list(']', false);
+        if (c == '"') return string();
+        if (c == '-' || (c >= '0' && c <= '9')) return number();
+        for (const char* word : {"true", "false", "null"})
+            if (s_.compare(i_, std::strlen(word), word) == 0) {
+                i_ += std::strlen(word);
+                return true;
+            }
+        return false;
+    }
+    // {"key": value, ...} or [value, ...]
+    bool list(char close, bool object) {
+        i_++;
+        space();
+        if (i_ < s_.size() && s_[i_] == close) return ++i_, true;
+        for (;;) {
+            space();
+            if (object) {
+                if (i_ >= s_.size() || s_[i_] != '"' || !string()) return false;
+                space();
+                if (i_ >= s_.size() || s_[i_++] != ':') return false;
+                space();
+            }
+            if (!value()) return false;
+            space();
+            if (i_ >= s_.size()) return false;
+            if (s_[i_] == close) return ++i_, true;
+            if (s_[i_++] != ',') return false;
+        }
+    }
+    bool string() {
+        for (i_++; i_ < s_.size(); i_++) {
+            const unsigned char c = s_[i_];
+            if (c == '"') return ++i_, true;
+            if (c < 0x20) return false;  // control characters must be escaped
+            if (c == '\\') {
+                if (++i_ >= s_.size()) return false;
+                const char e = s_[i_];
+                if (e == 'u') {
+                    for (int k = 0; k < 4; k++)
+                        if (++i_ >= s_.size() || !std::isxdigit(static_cast<unsigned char>(s_[i_]))) return false;
+                } else if (std::string("\"\\/bfnrt").find(e) == std::string::npos) {
+                    return false;
+                }
+            }
+        }
+        return false;
+    }
+    bool number() {
+        const size_t start = i_;
+        if (s_[i_] == '-') i_++;
+        const size_t digits = i_;
+        while (i_ < s_.size() && std::isdigit(static_cast<unsigned char>(s_[i_]))) i_++;
+        if (i_ == digits) return false;
+        if (i_ < s_.size() && s_[i_] == '.') {
+            const size_t frac = ++i_;
+            while (i_ < s_.size() && std::isdigit(static_cast<unsigned char>(s_[i_]))) i_++;
+            if (i_ == frac) return false;
+        }
+        return i_ > start;
+    }
+    void space() {
+        while (i_ < s_.size() && std::isspace(static_cast<unsigned char>(s_[i_]))) i_++;
+    }
+
+    const std::string& s_;
+    size_t i_ = 0;
+};
+
+bool validJson(const std::string& s) { return JsonChecker(s).valid(); }
+
+void jsonOutput() {
+    // the checker itself
+    CHECK(validJson("{\"a\": [1, -2.5, true, null, \"x\\\"y\\u00e9\"], \"b\": {}}"));
+    CHECK(!validJson("{\"a\": 1,}"));        // trailing comma
+    CHECK(!validJson("{\"a\": \"tab\there\"}"));  // raw control character
+    CHECK(!validJson("[1, 2"));                 // not closed
+    CHECK(!validJson("{\"a\": 1} extra"));
+    CHECK(!validJson("{'a': 1}"));
+
+    // the sample, and import lines with quotes and backslashes that must be escaped
+    const Result sample = analyze(loadProject(sampleDir));
+    std::ostringstream a;
+    writeJson(a, sample, sampleDir);
+    CHECK(validJson(a.str()));
+    CHECK(a.str().find("\"cycles\": 1") != std::string::npos);
+
+    const Result tricky = analyze({
+        {"a.py", "from .b import c  # say \"hi\" \\ there\nfrom .missing import x  # \"quoted\""},
+        {"b.py", "import a"},
+    });
+    std::ostringstream b;
+    writeJson(b, tricky, "dir with \"quotes\"");
+    CHECK(validJson(b.str()));
+}
+
 void dotExport() {
     const Result r = analyze(loadProject(sampleDir));
     std::ostringstream out;
@@ -652,6 +769,7 @@ int main(int argc, char** argv) {
         {"ignored folders and non-code files are skipped", ignoredFoldersSkipped},
         {"sample daemon project: cycle, order, critical files, path, fix", sampleProject},
         {"graphviz export of the sample", dotExport},
+        {"json output is valid json (own checker), with quotes and backslashes", jsonOutput},
     };
     int failed = 0;
     for (const auto& [name, fn] : tests) {

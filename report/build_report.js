@@ -83,7 +83,7 @@ front.push(
 );
 
 front.push(R.title("ABSTRACT", "Abstract"));
-front.push(p("Every software project is a network of files that import each other, and many everyday faults are properties of that network: circular imports that crash a Python program while it starts, imports of files that no longer exist, changes whose effect nobody can predict, and layers of an application that use each other in the wrong direction. Existing tools each cover one language and usually stop at reporting that a problem exists. This project builds Package Dependency Resolver, a command-line program written in C++17 that reads a Python, JavaScript/TypeScript or C/C++ project, models it as a directed graph and explains each problem with the exact source lines involved. The graph is stored as adjacency and reverse adjacency lists; a hash table with separate chaining resolves imports to files; Tarjan’s strongly-connected-components algorithm finds circular imports, considering only imports that run while a module loads; a greedy search suggests which imports to remove; Kahn’s algorithm with a binary min-heap gives a build order; breadth-first search answers “why does A need B?”; bitsets count, for every file, how many files depend on it; and tries match file names and the paths of user-written architecture rules. Every data structure is implemented by hand using only the standard library. The program passes 27 unit tests and 30 command-line tests, runs clean under memory-error checkers, and on five widely used open-source Python libraries reports only real load-time loops. Measurements on generated projects of up to one million files confirm the expected linear growth of the graph algorithms. The project shows that classical data structures and graph algorithms solve a real software-engineering problem efficiently."));
+front.push(p("Every software project is a network of files that import each other, and many everyday faults are properties of that network: circular imports that crash a Python program while it starts, imports of files that no longer exist, changes whose effect nobody can predict, and layers of an application that use each other in the wrong direction. Existing tools each cover one language and usually stop at reporting that a problem exists. This project builds Package Dependency Resolver, a command-line program written in C++17 that reads a Python, JavaScript/TypeScript or C/C++ project, models it as a directed graph and explains each problem with the exact source lines involved. The graph is stored as adjacency and reverse adjacency lists; a hash table with separate chaining resolves imports to files; Tarjan’s strongly-connected-components algorithm finds circular imports, considering only imports that run while a module loads; a greedy search suggests which imports to remove; Kahn’s algorithm with a binary min-heap gives a build order; breadth-first search answers “why does A need B?”; bitsets count, for every file, how many files depend on it; and tries match file names and the paths of user-written architecture rules. Every data structure is implemented by hand using only the standard library. The program passes 28 unit tests and 29 command-line tests, runs clean under memory-error checkers, and on five widely used open-source Python libraries reports only real load-time loops. Measurements on generated projects of up to one million files confirm the expected linear growth of the graph algorithms. The project shows that classical data structures and graph algorithms solve a real software-engineering problem efficiently."));
 front.push(p("**Keywords:** data structures, C++, directed graph, strongly connected components, topological sort, hash table, trie, static analysis"));
 
 // contents and lists: filled from the previous pass
@@ -195,7 +195,7 @@ add(R.table("3.1", "Hardware and software requirements", ["Category", "Specifica
     ["Operating system", "Arch Linux (kernel 7.2); also built and tested on Ubuntu by GitHub Actions"],
     ["Compiler / IDE", "GCC g++ 16.2.1 with GNU Make 4.4.1 (any C++17 compiler; Code::Blocks with MinGW should work but was not tested)"],
     ["Language", "C++ (C++17 standard, standard library only)"],
-    ["Other tools", "Git 2.56 and GitHub, GitHub Actions (CI), Graphviz 16.1 (drawing `--dot` output), Python 3.14 (benchmark charts, one test)"],
+    ["Other tools", "Git 2.56 and GitHub, GitHub Actions (CI), Graphviz 16.1 (drawing `--dot` output)"],
 ], [0.28, 0.72]));
 
 add(R.h2("3.2 Selection of Data Structures"));
@@ -316,11 +316,11 @@ add(R.bullets([
     "**Language:** C++17 with the standard library only. No third-party library is used; every data structure in Table 3.2 is written by hand.",
     "**Compiler and build:** GCC g++ 16.2.1 with the flags `-std=c++17 -O2 -Wall -Wextra -pedantic`, and GNU Make 4.4.1. The program builds without warnings. Without Make it builds with `g++ -std=c++17 -O2 -o pdr cpp/src/*.cpp`.",
     "**Version control and CI:** Git and a private GitHub repository. A GitHub Actions workflow builds the program and runs every test on Ubuntu on each push.",
-    "**Testing:** a small test framework written for the project (27 engine tests), a shell script of 30 command-line tests, and GCC’s AddressSanitizer and UndefinedBehaviorSanitizer.",
-    "**Supporting tools:** Graphviz to draw the `--dot` output, and Python 3 for the benchmark charts and for checking that the JSON output is valid.",
+    "**Testing:** a small test framework written for the project (28 engine tests), a shell script of 29 command-line tests, and GCC’s AddressSanitizer and UndefinedBehaviorSanitizer.",
+    "**Supporting tools:** Graphviz to draw the `--dot` output. The benchmark draws its own charts as SVG, so no plotting library is needed.",
     "**AI assistance:** Claude Code (Anthropic), an AI coding assistant, was used during development and in drafting this report. All code was reviewed, tested and is explained in this report.",
 ]));
-add(p("The source code is organised as follows: `cpp/src/` holds the program (24 files, 3,382 lines), `cpp/tests/` the engine and command-line tests, `cpp/bench/` the benchmark and chart script, `cpp/pdr.rules` the program’s own architecture rules, and `sample/fad_demo/` the bundled example project."));
+add(p("The source code is organised as follows: `cpp/src/` holds the program (24 files, 3,382 lines), `cpp/tests/` the engine and command-line tests, `cpp/bench/` the benchmark and the code that draws its charts, `cpp/pdr.rules` the program’s own architecture rules, and `sample/fad_demo/` the bundled example project."));
 
 add(R.h2("4.2 Module-wise Implementation"));
 add(R.h3("4.2.1 Parser: when each import runs"));
@@ -411,6 +411,7 @@ const engine = [
     ["Ignored folders", "Files in `venv/`, `node_modules/` and a `README.md`", "Only `a.py` and `b.py` analysed"],
     ["Sample project end to end", "`sample/fad_demo`", "17 files, the 3-file cycle, `.compress` broken, valid order, `config.py` most critical, fix `rules.py:4`"],
     ["Graphviz export", "`sample/fad_demo`", "Valid DOT with folder boxes, “remove” and “not found” labels"],
+    ["JSON output", "A hand-written JSON checker on six bad inputs; the sample; import lines with quotes and backslashes", "Bad inputs rejected; both outputs valid JSON"],
 ].map((r, i) => [`T${i + 1}`, r[0], r[1], r[2], "As expected", PASS]);
 add(R.table("5.1", "Engine test cases and results", ["Test ID", "Description", "Input", "Expected output", "Actual output", "Pass / Fail"], engine, [0.07, 0.17, 0.3, 0.26, 0.11, 0.09], { size: 18, align: [AT.CENTER, AT.LEFT, AT.LEFT, AT.LEFT, AT.LEFT, AT.CENTER] }));
 const cli = [
@@ -421,7 +422,7 @@ const cli = [
     ["`--check` on a clean 3-file project", "Exit 0; “3 files, 0 circular imports, 0 broken imports -> OK”"],
     ["`--check` on the sample", "“fix: remove fad/rules.py:4”"],
     ["`--check` on the program’s own source", "Exit 0, with its `pdr.rules`"],
-    ["`--json`", "Contains `\"cycles\": 1`; valid JSON (checked with Python)"],
+    ["`--json`", "Contains `\"cycles\": 1` (validity: test T28)"],
     ["`--dot`", "Starts `digraph dependencies {`; renders with Graphviz"],
     ["`--why main.py paths.py`", "“fad/main.py needs fad/utils/paths.py”"],
     ["`--help`", "Exit 0, lists exit codes"],
@@ -435,7 +436,7 @@ const cli = [
     ["Rules: bad line; `--rules` without a file; missing file", "Exit 2 with the reason (three tests)"],
     ["`--unused` on the sample and on a project with an extra file", "“None …”; then the extra file listed (two tests)"],
 ].map((r, i) => [`C${i + 1}`, r[0], r[1], "As expected", PASS]);
-add(R.table("5.2", "Command-line test cases and results (30 tests in 20 groups)", ["Test ID", "Command / situation", "Expected output", "Actual output", "Pass / Fail"], cli, [0.07, 0.38, 0.36, 0.1, 0.09], { size: 18, align: [AT.CENTER, AT.LEFT, AT.LEFT, AT.LEFT, AT.CENTER] }));
+add(R.table("5.2", "Command-line test cases and results (29 tests in 20 groups)", ["Test ID", "Command / situation", "Expected output", "Actual output", "Pass / Fail"], cli, [0.07, 0.38, 0.36, 0.1, 0.09], { size: 18, align: [AT.CENTER, AT.LEFT, AT.LEFT, AT.LEFT, AT.CENTER] }));
 
 add(R.h2("5.2 Results and Discussion"));
 add(R.h3("5.2.1 Reproducing a real failure"));
@@ -516,7 +517,7 @@ add(R.numbered([
     "**Circular imports.** Tarjan’s algorithm, run only on imports that execute while modules load, finds every circular import; each is shown as one concrete loop with its lines and a greedy, stability-aware suggestion of which imports to remove. On five working libraries this reduced eight reported loops to the two that are genuinely load-order dependent.",
     "**Order and impact.** Kahn’s algorithm with a min-heap gives a stable build order and layers, breadth-first search explains dependencies and the impact of a change, and bitsets made the critical-files ranking 22 to 33 times faster.",
     "**Rules, unused files and CI.** A rules file of layers, forbidden imports and entries is checked with a path trie; unused files are found with a multi-source search; every problem is printed in a form CI systems understand, with meaningful exit codes. The program checks its own architecture on every test run.",
-    "**Testing and measurement.** 27 engine tests and 30 command-line tests pass on two operating systems, the program runs clean under memory-error checkers, and measurements on projects of up to one million files confirm the linear growth of the graph algorithms.",
+    "**Testing and measurement.** 28 engine tests and 29 command-line tests pass on two operating systems, the program runs clean under memory-error checkers, and measurements on projects of up to one million files confirm the linear growth of the graph algorithms.",
 ]));
 add(p("Beyond the individual algorithms, the project showed how much the choice of model matters: the same Tarjan’s algorithm gave eight false alarms or two true findings depending only on which imports were placed in the graph. Testing on real code that the program was not written for was what exposed this."));
 add(R.h2("6.2 Future Scope"));
@@ -591,7 +592,7 @@ for (const [module, files] of FILES) {
 appx.push(R.appendixHeading("B", "User Manual"));
 appx.push(R.h3("B.1 Building and installing"));
 appx.push(p("On Linux or macOS with GCC or Clang and Make:"));
-appx.push(...L.codeBlock(["cd cpp", "make            # builds build/pdr", "make test       # runs the 27 engine tests and 30 command-line tests", "make install    # copies pdr to ~/.local/bin, so it runs in any folder", "make bench      # benchmark and charts (about a minute)", "make graph      # draws the sample and the program as SVG (needs Graphviz)"], false));
+appx.push(...L.codeBlock(["cd cpp", "make            # builds build/pdr", "make test       # runs the 28 engine tests and 29 command-line tests", "make install    # copies pdr to ~/.local/bin, so it runs in any folder", "make bench      # benchmark and its SVG charts (about a minute)", "make dist       # the source zip (from a git checkout)", "make graph      # draws the sample and the program as SVG (needs Graphviz)"], false));
 appx.push(p("Without Make, for example on Windows with MinGW: `g++ -std=c++17 -O2 -o pdr cpp/src/*.cpp`. Graphviz (`sudo pacman -S graphviz` on Arch Linux) is needed only to draw `--dot` output."));
 appx.push(R.h3("B.2 Running"));
 appx.push(p("Run `pdr` inside a project folder, or give the folder as the first argument. Files can be named by their file name (`main.py`) or by the end of their path (`utils/paths.py`)."));

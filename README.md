@@ -32,8 +32,9 @@ version does not have:
 ```
 cd cpp
 make                                   # build/pdr
-make test                              # 27 engine tests + 30 command-line tests
+make test                              # 28 engine tests + 29 command-line tests
 make bench                             # timings -> build/bench.csv and charts (about a minute)
+make dist                              # the zip to hand in -> build/v5-package-dependency-resolver.zip
 make graph                             # draw the sample and this program as SVG (needs graphviz)
 make install                           # copy pdr to ~/.local/bin, so it runs from any folder
 ```
@@ -112,10 +113,11 @@ Without `make` (Windows / Code::Blocks): `g++ -std=c++17 -O2 -o pdr cpp/src/*.cp
 | `cpp/src/path_trie.h` | trie over folder names, for matching rule paths |
 | `cpp/pdr.rules` | this program's own architecture, checked by `make test` |
 | `cpp/src/main.cpp` | console menu and command-line options |
-| `cpp/tests/engine_tests.cpp` | the 13 tests, ported, plus 14 for the C++-only features |
+| `cpp/tests/engine_tests.cpp` | the 13 tests, ported, plus 15 for the C++-only features |
 | `cpp/tests/cli_test.sh` | command-line tests: exit codes, `--check`, `--json`, `--dot` (run by `make test`) |
 | `cpp/bench/bench.cpp` | benchmark on generated projects (`make bench`) |
-| `cpp/bench/plot.py` | draws the benchmark charts as SVG and PNG, no libraries needed |
+| `cpp/bench/chart.h` | draws the benchmark charts as SVG, in C++ |
+| `cpp/packaging/README.md` | the README of the zip made by `make dist` (C++ program only) |
 
 ### Hand-written hash table
 
@@ -273,8 +275,9 @@ loop are red, the imports the cycle fix suggests removing are dashed, and broken
 
 `make bench` builds `cpp/bench/bench.cpp`, generates projects shaped like real code (packages of 10 files,
 each file importing 1 to 5 others, one small circular import per 20 packages, fixed random seed), and
-writes the median of several runs to `build/bench.csv`. `bench/plot.py` then draws `build/bench-*.svg`
-and `.png`. Results on an AMD Ryzen AI 7 350, g++ -O2:
+writes the median of several runs to `build/bench.csv`, then draws the charts `build/bench-*.svg` itself
+(`bench/chart.h`; `pdr_bench --charts build/bench.csv DIR` redraws them without running again).
+Results on an AMD Ryzen AI 7 350, g++ -O2:
 
 | Files | Import links | Tarjan | Kahn + min-heap | One BFS |
 |---|---|---|---|---|

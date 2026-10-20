@@ -1,5 +1,6 @@
 #!/bin/sh
-# Command-line tests: exit codes, --check output and --json.
+# Command-line tests: exit codes, --check output, --json and --dot.
+# (That --json is valid JSON is checked by the engine tests.)
 # Usage: tests/cli_test.sh <path-to-pdr> <sample-project>
 PDR=$(cd "$(dirname "$1")" && pwd)/$(basename "$1")  # absolute, so tests can cd
 SAMPLE=$2
@@ -75,18 +76,6 @@ expect "rules: missing rules file" 2 "cannot read rules file" "$SAMPLE" --check 
 expect "unused files" 0 "None. Every file is reached from a start file." "$SAMPLE" --unused
 printf '' >"$TMP/clean/pkg/old.py"
 expect "unused file is listed" 0 "    pkg/old.py" "$TMP/clean" --unused
-
-# --json must be valid JSON (checked with whichever tool is installed)
-"$PDR" "$SAMPLE" --json >"$TMP/out.json"
-if command -v python3 >/dev/null 2>&1; then
-    python3 -m json.tool "$TMP/out.json" >/dev/null && echo "PASS  json is valid (python3)" ||
-        { echo "FAIL  json is not valid"; FAILED=$((FAILED + 1)); }
-elif command -v node >/dev/null 2>&1; then
-    node -e 'JSON.parse(require("fs").readFileSync(process.argv[1], "utf8"))' "$TMP/out.json" &&
-        echo "PASS  json is valid (node)" || { echo "FAIL  json is not valid"; FAILED=$((FAILED + 1)); }
-else
-    echo "SKIP  json validity (no python3 or node)"
-fi
 
 # --dot must be valid Graphviz
 if command -v dot >/dev/null 2>&1; then

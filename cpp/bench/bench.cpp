@@ -1,6 +1,8 @@
 // Package Dependency Resolver - benchmark
 //
-//   make bench      -> build/bench.csv and the charts in build/
+//   make bench                       -> build/bench.csv and the charts build/bench-*.svg
+//   pdr_bench DIR                    run everything, write DIR/bench.csv and the charts
+//   pdr_bench --charts CSV DIR       only draw the charts of an earlier run
 //
 // Measures how the running time grows with the size of the project, to check
 // the complexity claims of the report against real numbers:
@@ -25,6 +27,7 @@
 #include "../src/algorithms.h"
 #include "../src/analyzer.h"
 #include "../src/hash_map.h"
+#include "chart.h"
 
 using namespace pdr;
 
@@ -180,9 +183,22 @@ void benchAnalyze(std::FILE* csv) {
 }  // namespace
 
 int main(int argc, char** argv) {
-    std::FILE* csv = argc > 1 ? std::fopen(argv[1], "w") : stdout;
+    const std::vector<std::string> args(argv + 1, argv + argc);
+    if (args.size() == 3 && args[0] == "--charts") {
+        if (!bench::drawCharts(args[1], args[2])) {
+            std::cerr << "bench: cannot read " << args[1] << "\n";
+            return 2;
+        }
+        return 0;
+    }
+    if (args.size() != 1) {
+        std::cerr << "usage: pdr_bench DIR  |  pdr_bench --charts CSV DIR\n";
+        return 2;
+    }
+    const std::string csvPath = args[0] + "/bench.csv";
+    std::FILE* csv = std::fopen(csvPath.c_str(), "w");
     if (!csv) {
-        std::cerr << "bench: cannot write " << argv[1] << "\n";
+        std::cerr << "bench: cannot write " << csvPath << "\n";
         return 2;
     }
     std::fprintf(csv, "# graph,files,links,tarjan_ms,kahn_ms,bfs_ms\n"
@@ -193,6 +209,8 @@ int main(int argc, char** argv) {
     benchHashMap(csv);
     benchRanking(csv);
     benchAnalyze(csv);
-    if (csv != stdout) std::fclose(csv);
+    std::fclose(csv);
+    bench::drawCharts(csvPath, args[0]);
+    std::cerr << "\nwrote " << csvPath << " and " << args[0] << "/bench-*.svg\n";
     return 0;
 }
