@@ -1,0 +1,10 @@
+# Architecture of this program, checked by its own tests (make test runs pdr --check here).
+#
+# Top layer first: the command line uses the reports, the reports use the analysis,
+# the analysis uses the resolver, rules and algorithms, those use the parser and the
+# data structures, and everything may use the hash table and the string helpers.
+layers  src/main  src/json_report|src/dot_export  src/analyzer  src/resolver|src/rules|src/algorithms  src/parser|src/graph|src/trie|src/path_trie  src/hash_map|src/min_heap|src/util
+
+# The program must never depend on its tests or its benchmark.
+forbid  src -> tests
+forbid  src -> bench

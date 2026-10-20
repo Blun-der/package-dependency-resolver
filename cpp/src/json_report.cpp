@@ -70,7 +70,8 @@ void writeJson(std::ostream& out, const Result& r, const std::string& folder) {
         << ", \"deferredImports\": " << s.deferredImports << ", \"typeCheckingImports\": " << s.typeCheckingImports
         << ", \"edges\": " << s.edges << ", \"cycles\": " << s.cycles << ", \"filesInCycles\": " << s.filesInCycles
         << ", \"broken\": " << s.broken << ", \"externals\": " << s.externals << ", \"thirdParty\": " << s.thirdParty
-        << ", \"layers\": " << s.layers << "},\n";
+        << ", \"layers\": " << s.layers << ", \"unused\": " << s.unused << ", \"startFiles\": " << s.startFiles
+        << ", \"ruleViolations\": " << s.ruleViolations << "},\n";
 
     std::vector<std::string> items;
     for (const Cycle& c : r.cycles)
@@ -110,7 +111,20 @@ void writeJson(std::ostream& out, const Result& r, const std::string& folder) {
     out << ",\n  \"externals\": ";
     array(out, items);
 
-    out << ",\n  \"entryPoints\": " << strList(r.entryPoints) << "\n}\n";
+    out << ",\n  \"entryPoints\": " << strList(r.entryPoints);
+    out << ",\n  \"unused\": " << strList(r.unused);
+
+    if (r.hasRules) {
+        items.clear();
+        for (const RuleViolation& v : r.ruleCheck.violations)
+            items.push_back("{\"file\": " + str(v.file) + ", \"line\": " + std::to_string(v.line) +
+                            ", \"text\": " + str(v.text) + ", \"imports\": " + str(v.target) +
+                            ", \"rule\": " + str(v.rule) + ", \"ruleLine\": " + std::to_string(v.ruleLine) + "}");
+        out << ",\n  \"ruleViolations\": ";
+        array(out, items);
+        out << ",\n  \"ruleWarnings\": " << strList(r.ruleCheck.warnings);
+    }
+    out << "\n}\n";
 }
 
 }  // namespace pdr

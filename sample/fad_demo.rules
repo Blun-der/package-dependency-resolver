@@ -1,0 +1,10 @@
+# Architecture rules for the sample daemon, used with:
+#   pdr sample/fad_demo --check --rules sample/fad_demo.rules
+#
+# Top layer first: main starts the daemon, the daemon runs the scheduler and the
+# watcher, they apply the rules, the rules run the actions, and everything may use
+# the helpers at the bottom. A layer may import the layers below it, never above.
+layers  fad/main  fad/daemon  fad/scheduler|fad/watcher  fad/rules  fad/actions  fad/events|fad/logger  fad/utils|fad/config
+
+# The path helpers must stay independent of what the daemon does with files.
+forbid  fad/utils -> fad/actions

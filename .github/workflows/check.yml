@@ -1,0 +1,14 @@
+name: check
+
+on: [push, pull_request]
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install Graphviz (for the --dot test)
+        run: sudo apt-get install -y graphviz
+      - name: Build and run the tests
+        # includes pdr --check on its own source, with cpp/pdr.rules
+        run: make -C cpp test

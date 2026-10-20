@@ -57,6 +57,25 @@ expect "wrong argument count" 2 "--why takes 2 arguments, got 1" "$SAMPLE" --why
 expect "allow flag without --check" 2 "only work with --check" "$SAMPLE" --report --allow-cycles
 expect "ambiguous file name" 2 "matches several files" "$SAMPLE" --impact __init__.py
 
+# architecture rules and unused files
+RULES="$SAMPLE.rules"
+expect "rules: upward import fails the check" 1 "fad/actions/move.py:4: error: fad/actions must not import fad/rules, a layer above it" \
+    "$SAMPLE" --check --rules "$RULES"
+expect "rules: counted in the summary line" 1 "1 rule violation -> FAILED" "$SAMPLE" --check --rules "$RULES" --allow-cycles --allow-broken
+mkdir -p "$TMP/ruled/ui" "$TMP/ruled/db"
+printf 'from db import models\n' >"$TMP/ruled/ui/page.py"
+printf '' >"$TMP/ruled/db/models.py"
+printf 'layers ui db\nforbid db -> nowhere\n' >"$TMP/ruled/pdr.rules"
+expect "rules: pdr.rules in the folder is read" 0 "0 rule violations -> OK" "$TMP/ruled" --check
+expect "rules: pattern that matches no file warns" 0 "pdr.rules:2: warning: 'nowhere' matches no file" "$TMP/ruled" --check
+printf 'layers ui\n' >"$TMP/bad.rules"
+expect "rules: bad rules file" 2 "bad.rules:1: 'layers' needs at least two paths" "$SAMPLE" --check --rules "$TMP/bad.rules"
+expect "rules: --rules without a file" 2 "--rules needs a file" "$SAMPLE" --check --rules
+expect "rules: missing rules file" 2 "cannot read rules file" "$SAMPLE" --check --rules "$TMP/none.rules"
+expect "unused files" 0 "None. Every file is reached from a start file." "$SAMPLE" --unused
+printf '' >"$TMP/clean/pkg/old.py"
+expect "unused file is listed" 0 "    pkg/old.py" "$TMP/clean" --unused
+
 # --json must be valid JSON (checked with whichever tool is installed)
 "$PDR" "$SAMPLE" --json >"$TMP/out.json"
 if command -v python3 >/dev/null 2>&1; then

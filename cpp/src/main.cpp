@@ -8,12 +8,17 @@
 //   pdr [folder] --check         for CI: exit 1 on cycles or broken imports
 //   pdr [folder] --json          the whole analysis as JSON
 //   pdr [folder] --dot           the graph for Graphviz (dot -Tsvg)
+//   pdr [folder] --unused        files no script, test or entry point reaches
 //
-// Without a folder, the current folder is analysed.
+// Without a folder, the current folder is analysed. Architecture rules are
+// read from <folder>/pdr.rules, or from the file given with --rules FILE.
 //
 // Exit codes: 0 = OK, 1 = --check found problems, 2 = bad usage or unreadable folder.
 #include <algorithm>
+#include <filesystem>
+#include <fstream>
 #include <iomanip>
+#include <sstream>
 #include <iostream>
 #include <optional>
 #include <string>
@@ -51,6 +56,8 @@ void printSummary(const Result& r, const std::string& folder) {
               << "  Circular imports     " << s.cycles << (s.cycles ? "  (" + plural(s.filesInCycles, "file") + ")" : "")
               << "\n"
               << "  Broken imports       " << s.broken << "\n"
+              << (r.hasRules ? "  Rule violations      " + std::to_string(s.ruleViolations) + "\n" : "")
+              << "  Unused files         " << s.unused << "  (" << plural(s.startFiles, "start file") << ")\n"
               << "  Outside packages     " << s.externals << "  (" << s.thirdParty << " to install)\n"
               << "  Layers               " << s.layers << "\n"
               << "  Analysed in          " << std::fixed << std::setprecision(1) << s.ms << " ms\n";
@@ -121,7 +128,7 @@ void printOrder(const Result& r) {
 }
 
 void printCritical(const Result& r, size_t limit = 10) {
-    heading("Most critical files (BFS on the reverse graph)");
+    heading("Most critical files (reachability counted with bitsets)");
     if (r.critical.empty()) {
         std::cout << "  No file is imported by another file.\n";
         return;
@@ -149,6 +156,33 @@ void printExternals(const Result& r) {
         }
         std::cout << "    " << std::left << std::setw(20) << e.name << std::right << "used by "
                   << plural(e.files.size(), "file") << "\n";
+    }
+}
+
+void printUnused(const Result& r) {
+    heading("Unused files (no start file reaches them)");
+    std::cout << "  Start files: scripts, tests, files with if __name__ == \"__main__\", configuration and\n"
+              << "  C/C++ source files (" << r.stats.startFiles << " here), plus 'entry' lines of pdr.rules.\n"
+              << "  A library's public modules can show up here: add them as entries. Check before deleting.\n\n";
+    if (r.unused.empty()) {
+        std::cout << "  None. Every file is reached from a start file.\n";
+        return;
+    }
+    for (const std::string& f : r.unused) std::cout << "    " << f << "\n";
+}
+
+void printRules(const Result& r) {
+    if (!r.hasRules) return;
+    heading("Architecture rules (pdr.rules)");
+    for (const std::string& w : r.ruleCheck.warnings) std::cout << "  " << w << "\n";
+    if (r.ruleCheck.violations.empty()) {
+        std::cout << "  No violations.\n";
+        return;
+    }
+    for (const RuleViolation& v : r.ruleCheck.violations) {
+        std::cout << "  " << v.file << "  imports  " << v.target << "\n"
+                  << "      line " << v.line << ":  " << v.text << "\n"
+                  << "      breaks: " << v.rule << "  (" << r.ruleCheck.source << ":" << v.ruleLine << ")\n";
     }
 }
 
@@ -241,7 +275,9 @@ void printReport(const Result& r, const std::string& folder) {
     printCycles(r);
     printBroken(r);
     printOrder(r);
+    printRules(r);
     printCritical(r);
+    printUnused(r);
     printExternals(r);
 }
 
@@ -269,9 +305,18 @@ bool printCheck(const Result& r, bool allowCycles, bool allowBroken) {
             problems++;
         }
     }
+    for (const RuleViolation& v : r.ruleCheck.violations) {
+        std::cout << v.file << ":" << v.line << ": error: " << v.rule << " (" << r.ruleCheck.source << ":"
+                  << v.ruleLine << ")\n"
+                  << "    " << v.file << ":" << v.line << ":  " << v.text << "\n";
+        problems++;
+    }
+    for (const std::string& w : r.ruleCheck.warnings) std::cout << w << "\n";
     std::cout << "pdr: " << plural(r.stats.files, "file") << ", " << plural(r.stats.cycles, "circular import")
               << (allowCycles ? " (allowed)" : "") << ", " << plural(r.stats.broken, "broken import")
-              << (allowBroken ? " (allowed)" : "") << " -> " << (problems ? "FAILED" : "OK") << "\n";
+              << (allowBroken ? " (allowed)" : "")
+              << (r.hasRules ? ", " + plural(r.stats.ruleViolations, "rule violation") : "") << " -> "
+              << (problems ? "FAILED" : "OK") << "\n";
     return problems > 0;
 }
 
@@ -297,6 +342,8 @@ void menu(const Result& r, const std::string& folder) {
                   << "  8. What breaks if a file changes?\n"
                   << "  9. Search files\n"
                   << " 10. File details\n"
+                  << " 11. Unused files\n"
+                  << (r.hasRules ? " 12. Architecture rules\n" : "")
                   << "  0. Exit\n";
         const std::string choice = ask("\nChoice: ");
         if (!std::cin || choice == "0") return;
@@ -317,6 +364,10 @@ void menu(const Result& r, const std::string& folder) {
             printSearch(r, ask("Start of a file name or path: "));
         } else if (choice == "10") {
             if (auto f = findFile(r, ask("File (name or path): "))) printFile(r, *f);
+        } else if (choice == "11") {
+            printUnused(r);
+        } else if (choice == "12" && r.hasRules) {
+            printRules(r);
         } else {
             std::cout << "  Please type a number from the menu.\n";
         }
@@ -336,11 +387,14 @@ const char* const HELP =
     "  --why FILE_A FILE_B    why does FILE_A need FILE_B?\n"
     "  --impact FILE          every file that may break if FILE changes\n"
     "  --search TEXT          find files whose name or path starts with TEXT\n"
-    "  --check                for CI: list circular and broken imports, exit 1 if any\n"
+    "  --check                for CI: list circular and broken imports and rule violations,\n"
+    "                         exit 1 if any\n"
     "      --allow-cycles     do not fail on circular imports\n"
     "      --allow-broken     do not fail on broken imports\n"
     "  --json                 the whole analysis as JSON\n"
     "  --dot                  the graph in Graphviz format; draw it with: dot -Tsvg -o graph.svg\n"
+    "  --unused               files that no script, test or entry point reaches\n"
+    "  --rules FILE           architecture rules (default: pdr.rules in the project folder)\n"
     "  --help                 show this help\n"
     "\n"
     "Files can be given as a path, a file name, or the end of a path.\n"
@@ -363,11 +417,16 @@ int main(int argc, char** argv) {
     }
     // Flags may appear anywhere; everything else is the folder, a command and its arguments.
     bool allowCycles = false, allowBroken = false;
+    std::optional<std::string> rulesFile;
     std::vector<std::string> words;
-    for (const std::string& a : args) {
+    for (size_t i = 0; i < args.size(); i++) {
+        const std::string& a = args[i];
         if (a == "--allow-cycles") allowCycles = true;
         else if (a == "--allow-broken") allowBroken = true;
-        else words.push_back(a);
+        else if (a == "--rules") {
+            if (i + 1 == args.size()) return usage("--rules needs a file");
+            rulesFile = args[++i];
+        } else words.push_back(a);
     }
     // The folder comes first and is optional: "pdr --check" checks the current folder.
     if (words.empty() || startsWith(words[0], "-")) words.insert(words.begin(), ".");
@@ -379,7 +438,8 @@ int main(int argc, char** argv) {
         const char* name;
         size_t params;
     } commands[] = {{"", 0},         {"--report", 0}, {"--why", 2},  {"--impact", 1},
-                    {"--search", 1}, {"--check", 0},  {"--json", 0}, {"--dot", 0}};
+                    {"--search", 1}, {"--check", 0},  {"--json", 0}, {"--dot", 0},
+                    {"--unused", 0}};
     bool known = false;
     for (const auto& c : commands) {
         if (command != c.name) continue;
@@ -393,7 +453,16 @@ int main(int argc, char** argv) {
 
     Result r;
     try {
-        r = analyze(loadProject(folder));
+        AnalyzeOptions options;
+        const std::string path = rulesFile ? *rulesFile : (std::filesystem::path(folder) / "pdr.rules").string();
+        if (rulesFile || std::filesystem::is_regular_file(path)) {
+            std::ifstream in(path);
+            if (!in) throw std::runtime_error("cannot read rules file " + path);
+            std::ostringstream text;
+            text << in.rdbuf();
+            options.rules = parseRules(text.str(), rulesFile ? *rulesFile : "pdr.rules");
+        }
+        r = analyze(loadProject(folder), options);
     } catch (const std::exception& e) {
         std::cerr << "pdr: " << e.what() << "\n";
         return USAGE;
@@ -424,6 +493,8 @@ int main(int argc, char** argv) {
         writeJson(std::cout, r, folder);
     } else if (command == "--dot") {
         writeDot(std::cout, r);
+    } else if (command == "--unused") {
+        printUnused(r);
     }
     return OK;
 }

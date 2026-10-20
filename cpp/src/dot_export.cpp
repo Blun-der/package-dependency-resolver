@@ -34,6 +34,10 @@ void writeDot(std::ostream& out, const Result& r) {
         for (const std::string& f : r.cycles[i].files) cycleOf.insert(f, static_cast<int>(i));
         for (const Step& st : r.cycles[i].fix) fixLinks.insert(linkKey(g.id(st.from), g.id(st.to)));
     }
+    HashSet<std::uint64_t> ruleLinks;  // imports that break pdr.rules
+    for (const RuleViolation& v : r.ruleCheck.violations) ruleLinks.insert(linkKey(g.id(v.file), g.id(v.target)));
+    HashSet<std::string> unused;
+    for (const std::string& f : r.unused) unused.insert(f);
 
     out << "digraph dependencies {\n"
         << "  // A -> B means \"A imports B\". Made by pdr --dot.\n"
@@ -56,6 +60,7 @@ void writeDot(std::ostream& out, const Result& r) {
             const std::string& name = g.name(id);
             out << indent << quote(name) << " [label=" << quote(baseName(name)) << ", tooltip=" << quote(name);
             if (cycleOf.contains(name)) out << ", fillcolor=\"#fde3e1\", color=\"#d0342c\"";
+            else if (unused.contains(name)) out << ", style=\"rounded,dashed\", fontcolor=\"#8a8a8a\", color=\"#b0b0b0\"";
             out << "];\n";
         }
         if (!folder.empty()) out << "  }\n";
@@ -71,6 +76,8 @@ void writeDot(std::ostream& out, const Result& r) {
             if (!atLoad) out << ", style=dotted";  // inside a function or type-checking only
             else if (ca && cb && *ca == *cb) out << ", color=\"#d0342c\", penwidth=1.6";
             if (fixLinks.contains(linkKey(a, e.to))) out << ", style=dashed, label=\"remove\", fontcolor=\"#d0342c\", fontsize=9";
+            else if (ruleLinks.contains(linkKey(a, e.to)))
+                out << ", color=\"#e07b00\", penwidth=1.6, label=\"breaks rule\", fontcolor=\"#e07b00\", fontsize=9";
             out << "];\n";
         }
     }

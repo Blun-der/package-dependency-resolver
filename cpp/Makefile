@@ -13,7 +13,7 @@ CXXFLAGS ?= -std=c++17 -O2 -Wall -Wextra -pedantic
 
 ENGINE  = src/util.cpp src/parser.cpp src/graph.cpp src/trie.cpp \
           src/algorithms.cpp src/resolver.cpp src/analyzer.cpp src/json_report.cpp \
-          src/dot_export.cpp
+          src/dot_export.cpp src/rules.cpp
 HEADERS = $(wildcard src/*.h)
 SAMPLE  = ../sample/fad_demo
 PREFIX ?= $(HOME)/.local

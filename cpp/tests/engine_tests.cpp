@@ -12,6 +12,8 @@
 #include "../src/dot_export.h"
 #include "../src/hash_map.h"
 #include "../src/min_heap.h"
+#include "../src/path_trie.h"
+#include "../src/rules.h"
 #include "../src/parser.h"
 
 using namespace pdr;
@@ -327,7 +329,7 @@ void pythonResolution() {
         {"proj/src/app/util.py", ""},
         {"proj/scripts/run.py", "import helpers\nfrom app.main import *"},
         {"proj/scripts/helpers.py", ""},
-    }, {true});
+    }, {true, {}});
     CHECK_EQ(r.rootName, std::string("proj"));
     CHECK_EQ(r.graph.outNames("src/app/main.py"), (Strings{"src/app/core/engine.py"}));
     CHECK_EQ(r.graph.outNames("src/app/core/__init__.py"), (Strings{"src/app/core/engine.py"}));
@@ -361,6 +363,88 @@ void loadTimeCycles() {
     CHECK_EQ(r.stats.typeCheckingImports, 1);
     // inside a package, "import types" is the standard library, not pkg/types.py
     CHECK_EQ(r.graph.outNames("pkg/a.py"), (Strings{"pkg/b.py"}));
+}
+
+// ---------- architecture rules and unused files ----------
+
+void pathTrieMatches() {
+    PathTrie t;
+    t.add("app", 0);
+    t.add("app/core/", 1);
+    t.add("./app/core/db.py", 2);
+    t.add("lib/utils", 3);
+    CHECK_EQ(t.matches("app/core/db.py"), (std::vector<int>{0, 1, 2}));  // shallowest first
+    CHECK_EQ(t.matches("app/ui.py"), (std::vector<int>{0}));
+    CHECK_EQ(t.matches("lib/utils.py"), (std::vector<int>{3}));    // module file of "lib/utils"
+    CHECK_EQ(t.matches("lib/utils/x.py"), (std::vector<int>{3}));  // or its folder
+    CHECK_EQ(t.matches("application.py"), std::vector<int>{});      // whole names only
+    CHECK_EQ(t.matches("lib/utilsx.py"), std::vector<int>{});
+}
+
+std::string ruleError(const std::string& text) {
+    try {
+        parseRules(text, "pdr.rules");
+    } catch (const std::exception& e) {
+        return e.what();
+    }
+    return "";
+}
+
+void rulesParsing() {
+    const Rules r = parseRules("# comment\n\nlayers ui services|jobs db  # trailing\nforbid a -> b\nentry scripts tools\n",
+                               "pdr.rules");
+    CHECK_EQ(r.layers.size(), size_t{1});
+    if (!r.layers.empty()) {
+        CHECK_EQ(r.layers[0].levels.size(), size_t{3});
+        CHECK_EQ(r.layers[0].levels[1], (Strings{"services", "jobs"}));
+        CHECK_EQ(r.layers[0].line, 3);
+    }
+    CHECK_EQ(r.forbids.size(), size_t{1});
+    CHECK_EQ(r.entries, (Strings{"scripts", "tools"}));
+    CHECK_EQ(ruleError("layers only"), std::string("pdr.rules:1: 'layers' needs at least two paths, top layer first"));
+    CHECK_EQ(ruleError("\nforbid a b"), std::string("pdr.rules:2: write 'forbid FROM -> TO'"));
+    CHECK_EQ(ruleError("allow a -> b"), std::string("pdr.rules:1: unknown rule 'allow' (expected layers, forbid or entry)"));
+}
+
+void rulesChecking() {
+    Graph g = graphOf({
+        {"ui/page.py", "services/orders.py"},   // down: fine
+        {"services/orders.py", "db/models.py"},  // down: fine
+        {"db/models.py", "ui/page.py"},           // up two layers: violation
+        {"services/orders.py", "jobs/nightly.py"},  // same layer: fine
+        {"db/models.py", "db/core/base.py"},     // db/core is deeper than db: still layer db
+        {"db/core/base.py", "db/models.py"},
+        {"lib/text.py", "services/orders.py"},   // forbid lib -> services
+    });
+    const Rules rules = parseRules("layers ui services|jobs db\nforbid lib -> services\nentry nowhere\n", "pdr.rules");
+    const RuleCheck c = checkRules(g, rules);
+    Strings found;
+    for (const RuleViolation& v : c.violations) found.push_back(v.file + " -> " + v.target + ": " + v.rule);
+    CHECK_EQ(found, (Strings{"db/models.py -> ui/page.py: db must not import ui, a layer above it",
+                             "lib/text.py -> services/orders.py: lib must not import services"}));
+    CHECK_EQ(c.warnings, (Strings{"pdr.rules:3: warning: 'nowhere' matches no file"}));
+}
+
+void unusedFiles() {
+    Rules rules;
+    rules.entries = {"pkg/plugins"};
+    rules.entryLines = {1};
+    const Result r = analyze({
+        {"main.py", "from pkg.used import x"},  // a script: folder without __init__.py
+        {"pkg/__init__.py", ""},
+        {"pkg/used.py", ""},
+        {"pkg/sub/__init__.py", ""},
+        {"pkg/sub/deep.py", ""},                // reached from a test: also runs pkg/sub/__init__.py
+        {"pkg/old.py", "import pkg.older"},     // nothing reaches it, nor what it imports
+        {"pkg/older.py", ""},
+        {"pkg/cli.py", "if __name__ == '__main__':\n    pass"},
+        {"pkg/plugins/__init__.py", ""},        // an "entry" of pdr.rules
+        {"tests/test_deep.py", "import pkg.sub.deep"},
+        {"src/main.cpp", "#include \"util.h\""},  // C/C++ sources are start files
+        {"src/util.h", ""},
+        {"src/unused.h", ""},
+    }, {false, rules});
+    CHECK_EQ(r.unused, (Strings{"pkg/old.py", "pkg/older.py", "src/unused.h"}));
 }
 
 void jsResolution() {
@@ -560,6 +644,10 @@ int main(int argc, char** argv) {
         {"python resolution: packages, relative, src layout, externals, broken", pythonResolution},
         {"cycles use load-time imports only; package-local names do not shadow the stdlib", loadTimeCycles},
         {"js resolution: extensions, index files, aliases, packages", jsResolution},
+        {"path trie: folders, files, module files, whole names", pathTrieMatches},
+        {"rules file: layers with |, forbid, entry, errors with line numbers", rulesParsing},
+        {"rules check: upward imports, same layer, deepest match, forbid, unused patterns", rulesChecking},
+        {"unused files: scripts, tests, __main__, parent packages, entries, headers", unusedFiles},
         {"c/c++ resolution: same folder, path ending, closest, system, broken", cppResolution},
         {"ignored folders and non-code files are skipped", ignoredFoldersSkipped},
         {"sample daemon project: cycle, order, critical files, path, fix", sampleProject},

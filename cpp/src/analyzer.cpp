@@ -10,6 +10,7 @@
 
 #include "algorithms.h"
 #include "parser.h"
+#include "path_trie.h"
 #include "resolver.h"
 
 namespace pdr {
@@ -23,6 +24,55 @@ std::vector<Step> stepsAlong(const Graph& graph, const std::vector<int>& path) {
         steps.push_back({graph.name(path[i]), graph.name(path[i + 1]), ev->line, ev->text});
     }
     return steps;
+}
+
+// if __name__ == "__main__":
+bool hasMainGuard(const std::string& content) {
+    for (const std::string& line : split(content, '\n')) {
+        const std::string t = trim(line);
+        if (startsWith(t, "if") && t.find("__name__") != std::string::npos && t.find("__main__") != std::string::npos)
+            return true;
+    }
+    return false;
+}
+
+// Files that are run on their own rather than imported: scripts, tests,
+// configuration, and every C/C++ source file (each is compiled by itself).
+// Unused files are the ones none of these reach.
+bool isStartFile(const std::string& path, const std::string& content, const HashSet<std::string>& fileSet) {
+    const std::string name = baseName(path);
+    const std::string dir = dirOf(path);
+    const std::string stem = name.substr(0, name.find('.'));
+    const std::vector<std::string> folders = split(dir, '/');
+    auto inFolder = [&](std::initializer_list<const char*> names) {
+        for (const std::string& f : folders)
+            for (const char* n : names)
+                if (f == n) return true;
+        return false;
+    };
+    switch (langOf(path)) {
+        case Lang::Cpp: {
+            const std::string ext = name.substr(name.rfind('.'));
+            return ext == ".c" || ext == ".cc" || ext == ".cpp" || ext == ".cxx" || ext == ".c++";
+        }
+        case Lang::Python:
+            // a file in a folder without __init__.py is a script, not a module of a package
+            if (!fileSet.contains(dir.empty() ? "__init__.py" : dir + "/__init__.py")) return true;
+            if (name == "__main__.py" || name == "conftest.py" || name == "setup.py") return true;
+            if (startsWith(name, "test_") || endsWith(name, "_test.py")) return true;
+            if (inFolder({"tests", "test", "examples", "example", "benchmarks", "scripts", "docs", "tools", "bin"}))
+                return true;  // run directly or by a tool, not imported
+            return hasMainGuard(content);
+        case Lang::JavaScript:
+            if (name.find(".test.") != std::string::npos || name.find(".spec.") != std::string::npos) return true;
+            if (name.find(".config.") != std::string::npos || endsWith(name, ".d.ts")) return true;
+            if (inFolder({"__tests__", "tests", "test", "pages", "scripts", "bin", "examples", "benchmarks"})) return true;
+            if (stem == "page" || stem == "layout" || stem == "route") return true;  // Next.js app routes
+            return (dir.empty() || dir == "src") &&
+                   (stem == "index" || stem == "main" || stem == "app" || stem == "App" || stem == "server" || stem == "cli");
+        default:
+            return false;
+    }
 }
 
 int countLines(const std::string& content) {
@@ -201,6 +251,46 @@ Result analyze(std::vector<SourceFile> files, const AnalyzeOptions& options) {
         if (ma.dependents != mb.dependents) return ma.dependents > mb.dependents;
         return ma.fanIn > mb.fanIn;
     });
+
+    // Unused files: BFS over every import from all start files at once
+    {
+        PathTrie extra;  // "entry" lines of pdr.rules
+        for (size_t i = 0; i < options.rules.entries.size(); i++) extra.add(options.rules.entries[i], static_cast<int>(i));
+        std::vector<bool> seen(graph.size(), false);
+        std::vector<int> queue;
+        for (const SourceFile& f : clean) {
+            const int id = graph.id(f.path);
+            if (isStartFile(f.path, f.content, ctx.fileSet) || !extra.matches(f.path).empty()) {
+                seen[id] = true;
+                queue.push_back(id);
+            }
+        }
+        r.stats.startFiles = static_cast<int>(queue.size());
+        auto reach = [&](int id) {
+            if (!seen[id]) {
+                seen[id] = true;
+                queue.push_back(id);
+            }
+        };
+        for (size_t head = 0; head < queue.size(); head++) {
+            const int v = queue[head];
+            for (const Edge& e : graph.out(v)) reach(e.to);
+            // importing a.b.c also runs a/__init__.py and a/b/__init__.py
+            if (langOf(graph.name(v)) == Lang::Python)
+                for (std::string d = dirOf(graph.name(v)); !d.empty(); d = dirOf(d))
+                    if (const int init = graph.id(d + "/__init__.py"); init >= 0) reach(init);
+        }
+        for (int id : byName)
+            if (!seen[id]) r.unused.push_back(graph.name(id));
+        r.stats.unused = static_cast<int>(r.unused.size());
+    }
+
+    // Architecture rules
+    r.hasRules = !options.rules.empty();
+    if (r.hasRules) {
+        r.ruleCheck = checkRules(graph, options.rules);
+        r.stats.ruleViolations = static_cast<int>(r.ruleCheck.violations.size());
+    }
 
     // File search: by file name and by full path
     for (int id = 0; id < graph.size(); id++) {

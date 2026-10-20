@@ -15,21 +15,24 @@ Everything runs in the browser. Your code is never uploaded.
 
 ## C++ version (course submission)
 
-`cpp/` holds the same engine in C++17, using only the standard library. The graph, hash table, min-heap
-and trie are written by hand. It started as a port of the JavaScript engine and adds things the web
+`cpp/` holds the same engine in C++17, using only the standard library. The graph, hash table, min-heap,
+tries and bitsets are written by hand. It started as a port of the JavaScript engine and adds things the web
 version does not have:
 
 - **C/C++ projects**: `#include "x.h"` and `#include <x.h>` are read, so the tool can analyse its own source
 - **only real circular imports**: imports inside functions, under `if TYPE_CHECKING:` or under
   `if __name__ == "__main__":` cannot cause a circular import error, so they are left out of cycle detection
 - **cycle fix suggestions**: which imports to remove so a circular import disappears
+- **architecture rules**: a `pdr.rules` file of layers and forbidden imports that `--check` enforces
+- **unused files**: files that no script, test or entry point reaches
+- **faster critical-files ranking** with bitsets
 - **graph images**: `--dot` writes the graph for Graphviz
 - **a benchmark**: `make bench` measures the algorithms on generated projects of up to a million files
 
 ```
 cd cpp
 make                                   # build/pdr
-make test                              # 22 engine tests + 22 command-line tests
+make test                              # 27 engine tests + 30 command-line tests
 make bench                             # timings -> build/bench.csv and charts (about a minute)
 make graph                             # draw the sample and this program as SVG (needs graphviz)
 make install                           # copy pdr to ~/.local/bin, so it runs from any folder
@@ -47,6 +50,8 @@ pdr --search ru
 pdr --check                            # for CI, see below
 pdr --json > deps.json
 pdr --dot | dot -Tsvg -o graph.svg
+pdr --unused                           # files nothing reaches
+pdr --check --rules my.rules           # rules from another file (default: pdr.rules here)
 pdr ~/some/other/project --check       # or name a folder
 pdr --help
 ```
@@ -60,7 +65,7 @@ turn into links, and sets the exit code:
 
 | Exit code | Meaning |
 |---|---|
-| 0 | no circular or broken imports |
+| 0 | no circular or broken imports, and no rule violations |
 | 1 | `--check` found problems |
 | 2 | bad usage, or the folder cannot be read / has no code |
 
@@ -77,15 +82,15 @@ pdr: 17 files, 1 circular import, 1 broken import -> FAILED
 
 `--allow-cycles` or `--allow-broken` turns off one of the two rules, for a project that cannot fix
 everything at once. `--json` prints the whole analysis (stats, cycles, broken imports, build order,
-critical files, outside packages, suggested fixes) for other tools or as a saved CI artifact.
+critical files, outside packages, suggested fixes, unused files, rule violations) for other tools or as a saved CI artifact.
 
-Example GitHub Actions step (from the repository root):
+This repository's own GitHub Actions workflow, `.github/workflows/check.yml`, runs `make -C cpp test` on
+every push, which includes `pdr --check` on the program's own source against `cpp/pdr.rules`. In another
+project the step is:
 
 ```yaml
 - name: Check imports
-  run: |
-    make -C cpp
-    cpp/build/pdr --check
+  run: pdr --check
 ```
 
 Without `make` (Windows / Code::Blocks): `g++ -std=c++17 -O2 -o pdr cpp/src/*.cpp`
@@ -103,8 +108,11 @@ Without `make` (Windows / Code::Blocks): `g++ -std=c++17 -O2 -o pdr cpp/src/*.cp
 | `cpp/src/analyzer.*` | loads a folder and runs the whole pipeline |
 | `cpp/src/json_report.*` | `--json` output |
 | `cpp/src/dot_export.*` | `--dot` output (Graphviz) |
+| `cpp/src/rules.*` | reads `pdr.rules` and checks every import against it |
+| `cpp/src/path_trie.h` | trie over folder names, for matching rule paths |
+| `cpp/pdr.rules` | this program's own architecture, checked by `make test` |
 | `cpp/src/main.cpp` | console menu and command-line options |
-| `cpp/tests/engine_tests.cpp` | the 13 tests, ported, plus 9 for the C++-only features |
+| `cpp/tests/engine_tests.cpp` | the 13 tests, ported, plus 14 for the C++-only features |
 | `cpp/tests/cli_test.sh` | command-line tests: exit codes, `--check`, `--json`, `--dot` (run by `make test`) |
 | `cpp/bench/bench.cpp` | benchmark on generated projects (`make bench`) |
 | `cpp/bench/plot.py` | draws the benchmark charts as SVG and PNG, no libraries needed |
@@ -158,6 +166,62 @@ These libraries work, so counting every import reports loops that cannot fail. T
 load-time loops that work only because of the order of the lines, the situation the tool is meant to
 flag. Flask's example is the well-known Flask pattern: `__init__.py` creates `app` and then imports
 `views`, which imports `app` back. Moving that import above `app = Flask(__name__)` breaks it.
+
+### Architecture rules
+
+Teams decide which parts of a program may use which: the screens use the services, the services use the
+database, never the other way round. `pdr.rules` writes that down, and `--check` fails when an import breaks it:
+
+```
+# top layer first: a layer may import the layers below it, never one above
+layers  fad/main  fad/daemon  fad/scheduler|fad/watcher  fad/rules  fad/actions  fad/events|fad/logger  fad/utils|fad/config
+forbid  fad/utils -> fad/actions      # nothing under fad/utils may import fad/actions
+entry   scripts                       # more start points for --unused
+```
+
+- Paths are folders or files of the project; `fad/utils` covers the folder `fad/utils/` and the file
+  `fad/utils.py`. Paths joined with `|` share a layer. When paths are nested (`app` and `app/core`), the
+  deepest one decides a file's layer.
+- `pdr.rules` in the project folder is read automatically; `--rules FILE` reads another file.
+- A rule path that matches no file is a warning (`pdr.rules:4: warning: 'fad/utilz' matches no file`), which
+  catches typos. A line the tool does not understand stops it with exit code 2 and the line number.
+- Every rule path is stored in a trie with one node per folder name. Walking a file's path down it finds
+  every rule that applies in O(depth of the path), so each import link is then checked in constant time
+  per rule that applies.
+
+`sample/fad_demo.rules` describes the sample daemon's design:
+
+```
+$ pdr sample/fad_demo --check --rules sample/fad_demo.rules
+...
+fad/actions/move.py:4: error: fad/actions must not import fad/rules, a layer above it (sample/fad_demo.rules:7)
+    fad/actions/move.py:4:  from ..rules import Rule
+```
+
+The rule points at a different import than the cycle fix. The cycle fix removes as few links as possible
+(`rules.py:4`); the rule knows which way the design says the dependency should go (`move.py:4`). Both
+are right answers to different questions, and `--dot` draws both (dashed red "remove", orange "breaks rule").
+
+`cpp/pdr.rules` holds this program's own layers (command line, reports, analysis, algorithms, data
+structures, helpers), and `make test` checks them, so the tool guards its own design.
+
+### Unused files
+
+`--unused` lists files that nothing reaches. It runs one BFS from every start file at once, following
+every import (also the ones inside functions). Start files are the files that run on their own:
+
+| Language | Start files |
+|---|---|
+| Python | scripts (a file in a folder without `__init__.py`), files with `if __name__ == "__main__":`, `__main__.py`, `setup.py`, `conftest.py`, `test_*.py`, files in `tests/`, `examples/`, `benchmarks/`, `scripts/`, `docs/`, `tools/`, `bin/` |
+| JavaScript / TypeScript | `*.test.*`, `*.spec.*`, `*.config.*`, `*.d.ts`, files in `__tests__/`, `tests/`, `pages/`, `scripts/`, `bin/`, `examples/`, `benchmarks/`, Next.js `page` / `layout` / `route` files, `index` / `main` / `app` / `server` / `cli` at the top or in `src/` |
+| C / C++ | every `.c` / `.cpp` / `.cc` / `.cxx` file (each is compiled by itself), so what is left are headers nobody includes |
+| any | paths named by `entry` in `pdr.rules` |
+
+Importing `a.b.c` also runs `a/__init__.py` and `a/b/__init__.py`, so reaching a module reaches its
+packages too. On the five projects above it reports nothing for requests, flask, httpx and click, and 21
+files for rich: `rich/_unicode_data/unicode*.py`, which rich loads with
+`import_module(f".unicode{version}")`, a name built at runtime that no static tool can see. That is why the
+list says "check before deleting", and why `entry rich/_unicode_data` exists.
 
 ### Critical files with bitsets
 
@@ -310,6 +374,7 @@ An edge **A → B** means "file A imports file B".
 | Stack | Tarjan's algorithm (iterative, so no recursion limit on deep projects) | tracks the current DFS path |
 | Queue | BFS | shortest chains and reachability |
 | Trie | file search box and path finder | prefix search in O(length of what you typed) |
+| Path trie (C++) | rule paths, one node per folder name | every rule containing a file in O(depth of its path) |
 | Set | visited nodes, deduplication | O(1) membership tests |
 | Bitset (C++) | which files each component reaches, 64 files per machine word | one OR handles 64 files |
 
@@ -382,6 +447,10 @@ Folders such as `node_modules`, `venv`, `.git`, `__pycache__`, `dist` and `build
 - Path aliases other than `@/` and `~/` (custom `tsconfig` paths) are reported as external packages.
 - The critical-files ranking is still O(V · (V + E)) in the worst case, only 64 times smaller: about
   2 s for 100,000 files, growing faster than linearly.
+- Unused files depend on guessing the start files. A library's public modules, plugins found by name and
+  modules loaded with `importlib` show up as unused until they are named with `entry`. `package.json`'s
+  `main` and `bin` fields are not read.
+- Rule paths are folders and files, not wildcards (`*/models`).
 - An import inside a plain `if` counts as load time even when the condition is false on this machine
   (click's Windows-only import, above): the tool cannot know which branch runs.
 - In JavaScript, a `require()` inside a function is still counted as load time; only `import()` and

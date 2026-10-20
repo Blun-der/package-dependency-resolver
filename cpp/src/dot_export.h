@@ -6,7 +6,8 @@
 // Files are grouped in a box per folder. Files and imports that form a loop
 // are red; the imports the cycle fix suggests removing are dashed; imports
 // that do not run while the module loads (inside a function, type-checking
-// only) are dotted; broken imports point to a dashed "missing" note.
+// only) are dotted; imports that break pdr.rules are orange; unused files are
+// gray with a dashed outline; broken imports point to a dashed "missing" note.
 #pragma once
 
 #include <ostream>

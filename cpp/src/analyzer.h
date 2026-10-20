@@ -11,6 +11,7 @@
 #include <vector>
 
 #include "graph.h"
+#include "rules.h"
 #include "trie.h"
 #include "util.h"
 
@@ -24,6 +25,7 @@ struct SourceFile {
 struct AnalyzeOptions {
     // Drop a folder name that every path starts with ("myproject/a.py" -> "a.py").
     bool stripRoot = false;
+    Rules rules;  // from pdr.rules, if the project has one
 };
 
 struct ImportRef {
@@ -89,6 +91,7 @@ struct Stats {
     int externals = 0, thirdParty = 0, broken = 0, layers = 0;
     int pythonFiles = 0, jsFiles = 0, cppFiles = 0;
     int deferredImports = 0, typeCheckingImports = 0;  // left out of cycle search
+    int startFiles = 0, unused = 0, ruleViolations = 0;
     double ms = 0;
 };
 
@@ -103,6 +106,9 @@ struct Result {
     std::vector<OrderUnit> order;
     std::vector<std::string> critical;     // most dependents first
     std::vector<std::string> entryPoints;  // files nobody imports
+    std::vector<std::string> unused;       // files no start file reaches (scripts, tests, ...)
+    bool hasRules = false;
+    RuleCheck ruleCheck;
     std::vector<ExternalPackage> externals;
     std::vector<BrokenImport> broken;
     Trie trie;
