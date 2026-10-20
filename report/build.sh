@@ -2,11 +2,14 @@
 # Builds the report: figures, then the .docx twice. The first pass is rendered to
 # PDF to find the page of every heading, figure and table; the second pass fills
 # those numbers into the contents and the lists.
-#   sh report/build.sh      -> report/build/Mini_Project_Report.docx and .pdf
+#   sh report/build.sh      -> report/build/$NAME.docx and .pdf
+#   NAME=other-name sh report/build.sh   to name the files differently
 set -e
 HERE=$(cd "$(dirname "$0")" && pwd)
 B=$HERE/build
 SOFFICE=${SOFFICE:-soffice}
+NAME=${NAME:-v5-Mini_Project_Report}  # same version prefix as the source zip
+export NAME
 
 sh "$HERE/make_figures.sh"
 
@@ -16,9 +19,9 @@ rm -rf "$B/lo"
 mkdir -p "$B/lo"
 cp -r "$HERE/lo-profile/user" "$B/lo/"
 render() {
-    rm -f "$B/Mini_Project_Report.pdf"
-    "$SOFFICE" -env:UserInstallation="file://$B/lo" --headless --convert-to pdf --outdir "$B" "$B/Mini_Project_Report.docx" >/dev/null 2>&1
-    pdftotext -layout "$B/Mini_Project_Report.pdf" "$B/report.txt"
+    rm -f "$B/$NAME.pdf"
+    "$SOFFICE" -env:UserInstallation="file://$B/lo" --headless --convert-to pdf --outdir "$B" "$B/$NAME.docx" >/dev/null 2>&1
+    pdftotext -layout "$B/$NAME.pdf" "$B/report.txt"
 }
 
 node "$HERE/build_report.js"
@@ -34,4 +37,4 @@ for pass in 2 3; do
         break
     fi
 done
-echo "pages: $(pdfinfo "$B/Mini_Project_Report.pdf" | awk '/^Pages/ {print $2}')"
+echo "pages: $(pdfinfo "$B/$NAME.pdf" | awk '/^Pages/ {print $2}')"

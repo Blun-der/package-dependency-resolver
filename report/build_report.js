@@ -1,4 +1,4 @@
-// Builds report/build/Mini_Project_Report.docx.
+// Builds report/build/$NAME.docx (NAME is set by build.sh; default v5-Mini_Project_Report).
 //   node report/build_report.js [pages.json]
 // pages.json (made by report/build.sh from a rendered copy) holds the page
 // number of every heading, figure and table for the contents and the lists.
@@ -11,7 +11,7 @@ const { AlignmentType: AT } = D;
 const ROOT = path.resolve(__dirname, "..");
 const SRC = path.join(ROOT, "cpp", "src");
 const FIG = path.join(__dirname, "build", "fig");
-const OUT = path.join(__dirname, "build", "Mini_Project_Report.docx");
+const OUT = path.join(__dirname, "build", `${process.env.NAME || "v5-Mini_Project_Report"}.docx`);
 const pages = process.argv[2] && fs.existsSync(process.argv[2]) ? JSON.parse(fs.readFileSync(process.argv[2], "utf8")) : {};
 
 const TITLE = "Package Dependency Resolver";
@@ -320,7 +320,7 @@ add(R.bullets([
     "**Supporting tools:** Graphviz to draw the `--dot` output. The benchmark draws its own charts as SVG, so no plotting library is needed.",
     "**AI assistance:** Claude Code (Anthropic), an AI coding assistant, was used during development and in drafting this report. All code was reviewed, tested and is explained in this report.",
 ]));
-add(p("The source code is organised as follows: `cpp/src/` holds the program (24 files, 3,382 lines), `cpp/tests/` the engine and command-line tests, `cpp/bench/` the benchmark and the code that draws its charts, `cpp/pdr.rules` the program’s own architecture rules, and `sample/fad_demo/` the bundled example project."));
+add(p("The source code is organised as follows: `cpp/src/` holds the program (24 files, 3,382 lines), `cpp/tests/` the engine and command-line tests, `cpp/bench/` the benchmark and the code that draws its charts, `cpp/pdr.rules` the program’s own architecture rules, and `sample/fad_demo/` the bundled example project. These are exactly the contents of the submitted source archive, `v5-package-dependency-resolver.zip`, which `make -C cpp dist` builds from the repository."));
 
 add(R.h2("4.2 Module-wise Implementation"));
 add(R.h3("4.2.1 Parser: when each import runs"));
@@ -570,7 +570,7 @@ for (const k of Object.keys(REFS)) if (!R.citeOrder.includes(k)) throw new Error
 // =====================================================================
 const appx = [R.title("APPENDICES", "Appendices")];
 appx.push(R.appendixHeading("A", "Source Code"));
-appx.push(p("The complete source code of the program follows, layer by layer from the bottom up, as in `cpp/pdr.rules`. The tests (`cpp/tests/`), the benchmark (`cpp/bench/`), the bundled sample and the browser prototype are in the submitted source archive and in the project repository ({{repository link or “available on request”}})."));
+appx.push(p("The complete source code of the program follows, layer by layer from the bottom up, as in `cpp/pdr.rules`. The tests (`cpp/tests/`), the benchmark (`cpp/bench/`) and the bundled sample are in the submitted source archive `v5-package-dependency-resolver.zip` (made with `make -C cpp dist`) and in the project repository ({{repository link or “available on request”}})."));
 const FILES = [
     ["Build", ["../Makefile", "../pdr.rules"]],
     ["Helpers and data structures", ["util.h", "util.cpp", "hash_map.h", "min_heap.h"]],
