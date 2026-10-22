@@ -23,11 +23,17 @@ const src = (name) => path.join(SRC, name);
 // =====================================================================
 // Cover page (no page number)
 // =====================================================================
+const STUDENTS = [
+    { name: "Yash Verma", urn: "E25B000225", roll: "59" },
+    { name: "Malay Miglani", urn: "E25000399", roll: "26" },
+];
+const GUIDE = "Dr. Atul Kathole";
+const DEPARTMENT = "Computer Science and Engineering";
 const cover = [
     ...blank(1),
     centered("AJEENKYA D Y PATIL UNIVERSITY PUNE", { bold: true, size: 30 }, { spacing: { after: 60 } }),
     centered("SCHOOL OF ENGINEERING", { bold: true, size: 26 }, { spacing: { after: 60 } }),
-    centered("Department of {{Department name}}", { size: 24 }),
+    centered(`Department of ${DEPARTMENT}`, { size: 24 }),
     ...blank(1),
     centered("{{Insert University Logo here}}", { italics: true, size: 24 }),
     ...blank(1),
@@ -40,10 +46,10 @@ const cover = [
     centered("Second Year B.Tech, Semester III", { size: 24 }),
     ...blank(1),
     centered("Submitted by", { bold: true, size: 24 }),
-    grid(["Sr.", "Name of student", "PRN", "Roll No."], [["1", "{{Name}}", "{{PRN}}", "{{Roll no.}}"]], [0.08, 0.47, 0.25, 0.2], { size: 22, align: [AT.CENTER, AT.LEFT, AT.CENTER, AT.CENTER] }),
+    grid(["Sr.", "Name of student", "URN", "Roll No."], STUDENTS.map((st, i) => [String(i + 1), st.name, st.urn, st.roll]), [0.08, 0.47, 0.25, 0.2], { size: 22, align: [AT.CENTER, AT.LEFT, AT.CENTER, AT.CENTER] }),
     ...blank(1),
     centered("Under the guidance of", { bold: true, size: 24 }, { spacing: { after: 40 } }),
-    centered("{{Prof. Name of Guide}}", { bold: true, size: 26 }),
+    centered(GUIDE, { bold: true, size: 26 }),
     ...blank(1),
     centered("Academic Year 2026 – 2027", { bold: true, size: 26 }),
 ];
@@ -56,30 +62,30 @@ const NOBORDERS = { top: NOBORDER, bottom: NOBORDER, left: NOBORDER, right: NOBO
 
 const front = [];
 front.push(R.title("CERTIFICATE", "Certificate"));
-front.push(p(`This is to certify that the mini project entitled **“${TITLE}”** has been carried out and submitted by the following student of Second Year B.Tech, Semester III, Department of {{Department name}}, School of Engineering, Ajeenkya D Y Patil University Pune, in partial fulfilment of the course **Data Structures using C++ (E0556B)** during the academic year 2026 – 2027. The work has been found satisfactory.`));
-front.push(grid([], [["1.", "{{Name of student}}", "{{PRN}}"]], [0.08, 0.6, 0.32], { header: false, size: 23, align: [AT.CENTER, AT.LEFT, AT.CENTER] }));
+front.push(p(`This is to certify that the mini project entitled **“${TITLE}”** has been carried out and submitted by the following students of Second Year B.Tech, Semester III, Department of ${DEPARTMENT}, School of Engineering, Ajeenkya D Y Patil University Pune, in partial fulfilment of the course **Data Structures using C++ (E0556B)** during the academic year 2026 – 2027. The work has been found satisfactory.`));
+front.push(grid([], STUDENTS.map((st, i) => [`${i + 1}.`, st.name, st.urn]), [0.08, 0.6, 0.32], { header: false, size: 23, align: [AT.CENTER, AT.LEFT, AT.CENTER] }));
 front.push(...blank(4));
 front.push(grid([], [
     ["____________________", "____________________", "____________________"],
-    ["**{{Name of Guide}}**", "**{{Name}}**", "**{{Name}}**"],
+    [`**${GUIDE}**`, "**{{Name of HOD}}**", "**{{Name of Dean}}**"],
     ["Project Guide", "Head of Department", "Dean, School of Engineering"],
 ], [0.333, 0.333, 0.334], { header: false, size: 22, borders: NOBORDERS, align: [AT.CENTER, AT.CENTER, AT.CENTER] }));
 front.push(...blank(3));
 front.push(p("Place: {{__________}}"), p("Date: {{__________}}"));
 
 front.push(R.title("DECLARATION", "Declaration"));
-front.push(p(`I hereby declare that the mini project report entitled **“${TITLE}”** is my own original work, carried out under the guidance of {{Prof. Name of Guide}}. The work has not been submitted earlier, in part or in full, to this or any other university or institution for the award of any degree, diploma or credit. All sources of information, code and ideas used have been duly acknowledged in the references.`));
-front.push(grid(["Sr.", "Name of student", "PRN", "Signature"], [["1", "{{Name}}", "{{PRN}}", ""]], [0.08, 0.42, 0.25, 0.25], { size: 22, align: [AT.CENTER, AT.LEFT, AT.CENTER, AT.LEFT] }));
+front.push(p(`We hereby declare that the mini project report entitled **“${TITLE}”** is our own original work, carried out under the guidance of ${GUIDE}. The work has not been submitted earlier, in part or in full, to this or any other university or institution for the award of any degree, diploma or credit. All sources of information, code and ideas used have been duly acknowledged in the references.`));
+front.push(grid(["Sr.", "Name of student", "URN", "Signature"], STUDENTS.map((st, i) => [String(i + 1), st.name, st.urn, ""]), [0.08, 0.42, 0.25, 0.25], { size: 22, align: [AT.CENTER, AT.LEFT, AT.CENTER, AT.LEFT] }));
 front.push(...blank(1), p("Place: {{__________}}"), p("Date: {{__________}}"));
 
 front.push(R.title("ACKNOWLEDGEMENT", "Acknowledgement"));
 front.push(
-    p("I would like to express my sincere gratitude to my project guide, {{Prof. Name of Guide}}, for the guidance, encouragement and patient feedback given throughout this mini project. The suggestions received during the reviews shaped both the direction of the work and the way it is presented in this report."),
-    p("I am thankful to {{Name}}, Head of the Department of {{Department name}}, for providing the facilities and the academic environment in which this project could be carried out, and to {{Name}}, Dean of the School of Engineering, and Ajeenkya D Y Patil University for the opportunity to apply the concepts of the course Data Structures using C++ to a practical problem."),
-    p("I also thank the faculty members and the laboratory staff of the department for their help and support during the semester."),
-    p("Finally, I am grateful to my family and friends for their constant encouragement and support."),
+    p(`We would like to express our sincere gratitude to our project guide, ${GUIDE}, for the guidance, encouragement and patient feedback given throughout this mini project. The suggestions received during the reviews shaped both the direction of the work and the way it is presented in this report.`),
+    p(`We are thankful to {{Name of HOD}}, Head of the Department of ${DEPARTMENT}, for providing the facilities and the academic environment in which this project could be carried out, and to {{Name of Dean}}, Dean of the School of Engineering, and Ajeenkya D Y Patil University for the opportunity to apply the concepts of the course Data Structures using C++ to a practical problem.`),
+    p("We also thank the faculty members and the laboratory staff of the department for their help and support during the semester."),
+    p("Finally, we are grateful to our families and friends for their constant encouragement and support."),
     ...blank(1),
-    new D.Paragraph({ alignment: AT.RIGHT, children: L.runs("{{Name}}", { italics: true }) }),
+    ...STUDENTS.map((st) => new D.Paragraph({ alignment: AT.RIGHT, children: L.runs(st.name, { italics: true }) })),
 );
 
 front.push(R.title("ABSTRACT", "Abstract"));
@@ -295,17 +301,17 @@ add(p("A rules file contains `layers` lines (paths from the top layer down; path
 
 add(R.h2("3.5 Module Description"));
 add(R.table("3.4", "Modules of the system", ["Module", "Purpose", "Data structure used", "Team member"], [
-    ["`util`", "File types, ignored folders, built-in module lists, path and string helpers", "Arrays, hash set", "{{Name}}"],
-    ["`parser`", "Masks comments and strings; reads imports with lines and timing", "Indentation stack, array of line starts (binary search)", "{{Name}}"],
-    ["`resolver`", "Import → project file, outside package or broken", "Hash tables (module index, path endings)", "{{Name}}"],
-    ["`graph`", "Files and import links with the line of each import", "Adjacency and reverse adjacency lists, hash table", "{{Name}}"],
-    ["`hash_map`", "Hash table and hash set (templates)", "Separate chaining with linked lists", "{{Name}}"],
-    ["`min_heap`, `trie`, `path_trie`", "Ordering, file search, rule paths", "Binary heap, tries", "{{Name}}"],
-    ["`algorithms`", "Tarjan, cycle fix, Kahn, BFS, bitset counts", "Stacks, queue, heap, bitsets", "{{Name}}"],
-    ["`rules`", "Reads `pdr.rules` and checks every link", "Path trie", "{{Name}}"],
-    ["`analyzer`", "Runs the whole pipeline; unused files", "All of the above", "{{Name}}"],
-    ["`json_report`, `dot_export`", "JSON and Graphviz output", "Hash sets", "{{Name}}"],
-    ["`main`", "Menu, commands, `--check` and exit codes", "—", "{{Name}}"],
+    ["`util`", "File types, ignored folders, built-in module lists, path and string helpers", "Arrays, hash set", "{{Team member}}"],
+    ["`parser`", "Masks comments and strings; reads imports with lines and timing", "Indentation stack, array of line starts (binary search)", "{{Team member}}"],
+    ["`resolver`", "Import → project file, outside package or broken", "Hash tables (module index, path endings)", "{{Team member}}"],
+    ["`graph`", "Files and import links with the line of each import", "Adjacency and reverse adjacency lists, hash table", "{{Team member}}"],
+    ["`hash_map`", "Hash table and hash set (templates)", "Separate chaining with linked lists", "{{Team member}}"],
+    ["`min_heap`, `trie`, `path_trie`", "Ordering, file search, rule paths", "Binary heap, tries", "{{Team member}}"],
+    ["`algorithms`", "Tarjan, cycle fix, Kahn, BFS, bitset counts", "Stacks, queue, heap, bitsets", "{{Team member}}"],
+    ["`rules`", "Reads `pdr.rules` and checks every link", "Path trie", "{{Team member}}"],
+    ["`analyzer`", "Runs the whole pipeline; unused files", "All of the above", "{{Team member}}"],
+    ["`json_report`, `dot_export`", "JSON and Graphviz output", "Hash sets", "{{Team member}}"],
+    ["`main`", "Menu, commands, `--check` and exit codes", "—", "{{Team member}}"],
 ], [0.2, 0.38, 0.27, 0.15], { size: 20 }));
 
 // =====================================================================
@@ -695,7 +701,7 @@ appx.push(grid(["Week", "Dates", "Work planned", "Work completed", "Guide’s re
     [1, 2, 3, 4].map((w) => [String(w), "{{..}}", "{{..}}", "{{..}}", "", ""]), [0.08, 0.14, 0.24, 0.24, 0.18, 0.12], { size: 21 }));
 appx.push(...blank(1));
 appx.push(centered("Team contribution", { italics: true, size: 22 }, { keepNext: true }));
-appx.push(grid(["Student", "Modules coded", "Report chapters written"], [["{{Name}}", "All modules (solo project)", "All chapters"]], [0.34, 0.33, 0.33], { size: 22 }));
+appx.push(grid(["Student", "Modules coded", "Report chapters written"], STUDENTS.map((st) => [st.name, "{{Modules}}", "{{Chapters}}"]), [0.34, 0.33, 0.33], { size: 22 }));
 
 // =====================================================================
 // Contents and lists (page numbers from the previous pass)
@@ -733,7 +739,7 @@ const header = new D.Header({
     children: [new D.Paragraph({
         border: { bottom: { style: D.BorderStyle.SINGLE, size: 6, color: "000000", space: 4 } },
         spacing: { after: 0, line: 240 },
-        children: [new D.TextRun({ text: TITLE, italics: true, size: 20 }), new D.TextRun({ text: " | ", size: 20 }), ...L.runs("{{Department name}}", { size: 20 }), new D.TextRun({ text: ", ADYPU Pune", size: 20 })],
+        children: [new D.TextRun({ text: TITLE, italics: true, size: 20 }), new D.TextRun({ text: " | ", size: 20 }), ...L.runs(DEPARTMENT, { size: 20 }), new D.TextRun({ text: ", ADYPU Pune", size: 20 })],
     })],
 });
 const footer = new D.Footer({ children: [new D.Paragraph({ alignment: AT.CENTER, children: [new D.TextRun({ children: [D.PageNumber.CURRENT], size: 22 })] })] });
@@ -742,7 +748,7 @@ const pageProps = (format) => ({
 });
 
 const doc = new D.Document({
-    creator: "{{Name}}",
+    creator: STUDENTS.map((st) => st.name).join(", "),
     title: TITLE,
     description: "Mini project report, Data Structures using C++ (E0556B)",
     styles: {
