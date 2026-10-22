@@ -327,7 +327,10 @@ add(R.bullets([
     "**Supporting tools:** Graphviz to draw the `--dot` output. The benchmark draws its own charts as SVG, so no plotting library is needed.",
     "**AI assistance:** Claude Code (Anthropic), an AI coding assistant, was used during development and in drafting this report. All code was reviewed, tested and is explained in this report.",
 ]));
-add(p("The source code is organised as follows: `cpp/src/` holds the program (24 files, 3,382 lines), `cpp/tests/` the engine and command-line tests, `cpp/bench/` the benchmark and the code that draws its charts, `cpp/pdr.rules` the program’s own architecture rules, and `sample/fad_demo/` the bundled example project. These are exactly the contents of the submitted source archive, `v5-package-dependency-resolver.zip`, which `make -C cpp dist` builds from the repository."));
+// counted when the report is built, so the numbers always match the code
+const srcFiles = fs.readdirSync(SRC);
+const srcLines = srcFiles.reduce((sum, f) => sum + fs.readFileSync(path.join(SRC, f), "utf8").split("\n").length - 1, 0);
+add(p("The source code is organised as follows: `cpp/src/` holds the program (" + srcFiles.length + " files, " + srcLines.toLocaleString("en-US") + " lines), `cpp/tests/` the engine and command-line tests, `cpp/bench/` the benchmark and the code that draws its charts, `cpp/pdr.rules` the program’s own architecture rules, and `sample/fad_demo/` the bundled example project. These are exactly the contents of the submitted source archive, `v5-package-dependency-resolver.zip`, which `make -C cpp dist` builds from the repository."));
 
 add(R.h2("4.2 Module-wise Implementation"));
 add(R.h3("4.2.1 Parser: when each import runs"));
