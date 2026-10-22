@@ -83,7 +83,7 @@ front.push(
 );
 
 front.push(R.title("ABSTRACT", "Abstract"));
-front.push(p("Every software project is a network of files that import each other, and many everyday faults are properties of that network: circular imports that crash a Python program while it starts, imports of files that no longer exist, changes whose effect nobody can predict, and layers of an application that use each other in the wrong direction. Existing tools each cover one language and usually stop at reporting that a problem exists. This project builds Package Dependency Resolver, a command-line program written in C++17 that reads a Python, JavaScript/TypeScript or C/C++ project, models it as a directed graph and explains each problem with the exact source lines involved. The graph is stored as adjacency and reverse adjacency lists; a hash table with separate chaining resolves imports to files; Tarjan’s strongly-connected-components algorithm finds circular imports, considering only imports that run while a module loads; a greedy search suggests which imports to remove; Kahn’s algorithm with a binary min-heap gives a build order; breadth-first search answers “why does A need B?”; bitsets count, for every file, how many files depend on it; and tries match file names and the paths of user-written architecture rules. Every data structure is implemented by hand using only the standard library. The program passes 28 unit tests and 29 command-line tests, runs clean under memory-error checkers, and on five widely used open-source Python libraries reports only real load-time loops. Measurements on generated projects of up to one million files confirm the expected linear growth of the graph algorithms. The project shows that classical data structures and graph algorithms solve a real software-engineering problem efficiently."));
+front.push(p("Every software project is a network of files that import each other, and many everyday faults are properties of that network: circular imports that crash a Python program while it starts, imports of files that no longer exist, changes whose effect nobody can predict, and layers of an application that use each other in the wrong direction. Existing tools each cover one language and usually stop at reporting that a problem exists. This project builds Package Dependency Resolver, a command-line program written in C++17 that reads a Python, JavaScript/TypeScript or C/C++ project, models it as a directed graph and explains each problem with the exact source lines involved. The graph is stored as adjacency and reverse adjacency lists; a hash table with separate chaining resolves imports to files; Tarjan’s strongly-connected-components algorithm finds circular imports, considering only imports that run while a module loads; a greedy search suggests which imports to remove; Kahn’s algorithm with a binary min-heap gives a build order; breadth-first search answers “why does A need B?”; bitsets count, for every file, how many files depend on it; and tries match file names and the paths of user-written architecture rules. Every data structure is implemented by hand using only the standard library. The program passes 31 unit tests and 30 command-line tests and runs clean under memory-error checkers. It was evaluated on sixteen open-source projects in three languages and on the code before and after six real circular-import bug fixes in projects such as pydantic, LangChain, Astropy and SciPy: it reports the loop each fix removed, at the lines the developers changed, and it found a further, unreported import-order failure in the trading framework jesse, which was confirmed by running Python. Measurements on generated projects of up to one million files confirm the expected linear growth of the graph algorithms. The project shows that classical data structures and graph algorithms solve a real software-engineering problem efficiently."));
 front.push(p("**Keywords:** data structures, C++, directed graph, strongly connected components, topological sort, hash table, trie, static analysis"));
 
 // contents and lists: filled from the previous pass
@@ -134,7 +134,7 @@ add(R.bullets([
 ]));
 
 add(R.h2("1.5 Organisation of the Report"));
-add(p("Chapter 2 surveys existing tools and the algorithms the project builds on, and identifies the gap it addresses. Chapter 3 analyses the requirements, justifies the choice of each data structure and presents the architecture, the algorithms and a flowchart. Chapter 4 describes the implementation module by module with key code and sample output. Chapter 5 lists the test cases, discusses results on the bundled sample and on five open-source projects, and reports measured running times and the complexity of each operation. Chapter 6 concludes against the objectives above and outlines future work. The appendices contain the source code, a user manual, the plagiarism report and the weekly progress log."));
+add(p("Chapter 2 surveys existing tools and the algorithms the project builds on, and identifies the gap it addresses. Chapter 3 analyses the requirements, justifies the choice of each data structure and presents the architecture, the algorithms and a flowchart. Chapter 4 describes the implementation module by module with key code and sample output. Chapter 5 lists the test cases, discusses results on the bundled sample, on sixteen open-source projects and on six real bug fixes, and reports measured running times and the complexity of each operation. Chapter 6 concludes against the objectives above and outlines future work. The appendices contain the source code, a user manual, the plagiarism report and the weekly progress log."));
 
 // =====================================================================
 // Chapter 2: Literature Survey
@@ -243,6 +243,7 @@ add(p("Each line is pushed and popped at most once, so the pass costs O(characte
 
 add(R.h3("3.4.2 Resolving imports"));
 add(p("All lookups go through hash tables built once: the set of project files, an index from dotted Python module names to files, and, for C/C++, an index from every path ending to the files with that ending (`a/b/c.h` is reachable as `a/b/c.h`, `b/c.h` and `c.h`). A Python import `a.b.c` tries `a/b/c.py`, `a/b/c/__init__.py`, then the shorter names; relative imports climb folders from the importing file. A file’s own folder is searched first only when that folder is not a package: inside a package, `import types` means the standard-library module, never the package’s own `types.py`. A quoted C/C++ include is looked up next to the including file, then by path ending; when several files match, the one sharing the most leading folders with the including file wins."));
+add(p("Three further rules came from real projects (Sections 5.2.3 and 5.2.4). First, Python runs every package of a dotted name before the module itself: `from jesse.models.Route import Route` first runs `jesse/models/__init__.py`. Such an import is therefore also a link to the `__init__.py` of every enclosing package, except the packages that contain the importing file, which are already loading. Second, a module built from Cython or C/C++ (SciPy’s `_rotation_cy.pyx`) has no `.py` file; it is recognised by its source file, so that it is not mistaken for its package’s `__init__.py`. Third, an import that names an existing file that is not code (`./style.css`, `#include \"commands.def\"`), build output in `dist/`, or a file read as text (Vite’s `./main.js?raw`) is neither a link nor a broken import."));
 
 add(R.h3("3.4.3 Tarjan’s strongly connected components"));
 add(p(`Tarjan’s algorithm ${c("tarjan")} gives each node a discovery index and a *low-link*, the smallest index reachable from it through the current search path. A node whose low-link equals its own index is the root of a component, and the nodes above it on the stack form that component. To avoid recursion, the implementation keeps an explicit stack of (node, next edge to try):`));
@@ -316,7 +317,7 @@ add(R.bullets([
     "**Language:** C++17 with the standard library only. No third-party library is used; every data structure in Table 3.2 is written by hand.",
     "**Compiler and build:** GCC g++ 16.2.1 with the flags `-std=c++17 -O2 -Wall -Wextra -pedantic`, and GNU Make 4.4.1. The program builds without warnings. Without Make it builds with `g++ -std=c++17 -O2 -o pdr cpp/src/*.cpp`.",
     "**Version control and CI:** Git and a private GitHub repository. A GitHub Actions workflow builds the program and runs every test on Ubuntu on each push.",
-    "**Testing:** a small test framework written for the project (28 engine tests), a shell script of 29 command-line tests, and GCC’s AddressSanitizer and UndefinedBehaviorSanitizer.",
+    "**Testing:** a small test framework written for the project (31 engine tests), a shell script of 30 command-line tests, and GCC’s AddressSanitizer and UndefinedBehaviorSanitizer.",
     "**Supporting tools:** Graphviz to draw the `--dot` output. The benchmark draws its own charts as SVG, so no plotting library is needed.",
     "**AI assistance:** Claude Code (Anthropic), an AI coding assistant, was used during development and in drafting this report. All code was reviewed, tested and is explained in this report.",
 ]));
@@ -381,7 +382,7 @@ add(R.figure(fig("sample-rules.png"), "4.7", "Dependency graph of the sample pro
 // =====================================================================
 add(R.chapterHeading(5, "Testing and Results"));
 add(R.h2("5.1 Test Cases"));
-add(p("Testing was done at three levels: engine tests that call the data structures and algorithms directly (Table 5.1), command-line tests that run the finished program and check its output and exit code (Table 5.2), and runs on real open-source projects (Section 5.2). `make test` runs the first two; all 57 tests pass on Arch Linux and on Ubuntu in GitHub Actions."));
+add(p("Testing was done at three levels: engine tests that call the data structures and algorithms directly (Table 5.1), command-line tests that run the finished program and check its output and exit code (Table 5.2), and runs on real open-source projects (Section 5.2). `make test` runs the first two; all 61 tests pass on Arch Linux and on Ubuntu in GitHub Actions."));
 const PASS = "Pass";
 const engine = [
     ["Python import forms", "`import os, sys as system`; multi-line `from a.b import (c, d)`; relative imports; commented and docstring imports", "6 imports, correct levels and lines; comment and docstring ignored"],
@@ -402,13 +403,16 @@ const engine = [
     ["Bitsets equal BFS", "20 random graphs of up to 300 files, one slice and 64-file slices", "Identical counts in both directions"],
     ["Python resolution", "`src/` layout, packages, relative, outside and missing imports", "Expected links; outside `os`, `requests`; `.missing` broken at line 3"],
     ["Load-time cycles", "a→b at load time, b→a under `TYPE_CHECKING` and inside a function; a package `types.py`", "No cycle; both links in the full graph; `import types` is the standard library"],
+    ["Parent packages", "jesse’s layout: `routes` imports `models.Route`; `models/__init__.py` imports `Exchange`, which imports `routes`", "Links to `models/Route.py` and `models/__init__.py`; one 3-file cycle"],
+    ["Compiled modules", "SciPy’s layout: imports of `_rotation_cy` (`.pyx`) and `pyduccfft` (`.cxx`) from inside and outside their package", "No cycle; from outside, only the packages are linked"],
     ["JavaScript resolution", "Extensions, `index.js`, `@/` alias, scoped packages", "Expected links; outside `lodash`, `@scope/pkg`, `fs`; `./nope` broken"],
     ["Path trie", "Paths `app`, `app/core`, a file path, `lib/utils`", "Matches shallowest first; module file matched; no partial names"],
     ["Rules file parsing", "Layers with `|`, forbid, entry, comments; three bad lines", "Correct rules; errors carry `pdr.rules:N:`"],
     ["Rules check", "7 links against layers, forbid and an unused path", "Exactly 2 violations and 1 warning"],
     ["Unused files", "13-file project with scripts, tests, packages, an entry, headers", "Unused: `pkg/old.py`, `pkg/older.py`, `src/unused.h`"],
     ["C/C++ resolution", "Same folder, path ending, two candidates, system headers, missing", "Expected links; the closer `config.h`; `missing.h` broken"],
-    ["Ignored folders", "Files in `venv/`, `node_modules/` and a `README.md`", "Only `a.py` and `b.py` analysed"],
+    ["Ignored folders", "Files in `venv/`, `node_modules/`, `vendor/` and a `README.md`", "Only `a.py` and `b.py` analysed"],
+    ["Non-code imports", "`./env/data.js`, `./App.vue`, `./style.css`, `?raw`, `./dist/…`, `./utils` (a `.d.ts` file), `#include \"commands.def\"`, two missing files", "Real links kept; only `./gone.css` and `missing.def` broken"],
     ["Sample project end to end", "`sample/fad_demo`", "17 files, the 3-file cycle, `.compress` broken, valid order, `config.py` most critical, fix `rules.py:4`"],
     ["Graphviz export", "`sample/fad_demo`", "Valid DOT with folder boxes, “remove” and “not found” labels"],
     ["JSON output", "A hand-written JSON checker on six bad inputs; the sample; import lines with quotes and backslashes", "Bad inputs rejected; both outputs valid JSON"],
@@ -422,7 +426,7 @@ const cli = [
     ["`--check` on a clean 3-file project", "Exit 0; “3 files, 0 circular imports, 0 broken imports -> OK”"],
     ["`--check` on the sample", "“fix: remove fad/rules.py:4”"],
     ["`--check` on the program’s own source", "Exit 0, with its `pdr.rules`"],
-    ["`--json`", "Contains `\"cycles\": 1` (validity: test T28)"],
+    ["`--json`", "Contains `\"cycles\": 1` (validity: test T31)"],
     ["`--dot`", "Starts `digraph dependencies {`; renders with Graphviz"],
     ["`--why main.py paths.py`", "“fad/main.py needs fad/utils/paths.py”"],
     ["`--help`", "Exit 0, lists exit codes"],
@@ -435,8 +439,9 @@ const cli = [
     ["Rules: `pdr.rules` read from the folder; unused path", "Exit 0; warning `pdr.rules:2: warning: 'nowhere' matches no file` (two tests)"],
     ["Rules: bad line; `--rules` without a file; missing file", "Exit 2 with the reason (three tests)"],
     ["`--unused` on the sample and on a project with an extra file", "“None …”; then the extra file listed (two tests)"],
+    ["A `myenv/` folder with `pyvenv.cfg` and a code folder named `env/`", "The virtual environment skipped, `lib/env/data.py` analysed; exit 0"],
 ].map((r, i) => [`C${i + 1}`, r[0], r[1], "As expected", PASS]);
-add(R.table("5.2", "Command-line test cases and results (29 tests in 20 groups)", ["Test ID", "Command / situation", "Expected output", "Actual output", "Pass / Fail"], cli, [0.07, 0.38, 0.36, 0.1, 0.09], { size: 18, align: [AT.CENTER, AT.LEFT, AT.LEFT, AT.LEFT, AT.CENTER] }));
+add(R.table("5.2", "Command-line test cases and results (30 tests in 21 groups)", ["Test ID", "Command / situation", "Expected output", "Actual output", "Pass / Fail"], cli, [0.07, 0.38, 0.36, 0.1, 0.09], { size: 18, align: [AT.CENTER, AT.LEFT, AT.LEFT, AT.LEFT, AT.CENTER] }));
 
 add(R.h2("5.2 Results and Discussion"));
 add(R.h3("5.2.1 Reproducing a real failure"));
@@ -454,11 +459,65 @@ add(R.table("5.3", "Cycles found in five open-source Python projects", ["Project
 ], [0.16, 0.1, 0.32, 0.2, 0.22], { align: [AT.LEFT, AT.CENTER, AT.CENTER, AT.CENTER, AT.CENTER] }));
 add(p("The two loops that remain are real load-time loops that work only because of the order of the lines in the files. Flask’s is in an example application: `__init__.py` creates `app` and then imports `views`, which imports `app` back; moving that import above the line that creates `app` would break the application. Click’s loop between `_compat.py` and `_winconsole.py` exists only on Windows. These are exactly the fragile situations the check is meant to flag. The unused-files search reported nothing for four of the projects and 21 files for rich, all of them `rich/_unicode_data/unicode*.py`, which rich loads with `import_module` using a name built at run time. No static tool can see such imports, which is why the output asks the user to check before deleting and why `entry` rules exist."));
 
-add(R.h3("5.2.3 Architecture rules"));
+add(R.h3("5.2.3 Sixteen projects in three languages"));
+add(p("The five libraries above are all small and all Python. To cover the other two languages and larger code, the program was then run on sixteen projects (shallow copies of the default branch, 22 October 2026): the five libraries plus Django, SymPy, FastAPI, Black and jesse in Python; Express, axios and Vue (`vuejs/core`) in JavaScript/TypeScript; and Redis, LevelDB and nlohmann/json in C/C++. Table 5.4 gives the commit of each, so the results can be reproduced. Times are the best of three runs of `--json` on the machine of Table 3.1."));
+add(R.table("5.4", "Results on sixteen open-source projects", ["Project", "Commit", "Language", "Files", "Import links", "Loops (files in them)", "Broken imports", "Time (ms)"], [
+    ["requests", "611c616", "Python", "37", "116", "0", "0", "9"],
+    ["httpx", "b5addb6", "Python", "60", "124", "0", "0", "11"],
+    ["flask", "d086db8", "Python", "83", "202", "1 (2)", "0", "13"],
+    ["click", "2247b35", "Python", "91", "173", "1 (2)", "0", "18"],
+    ["rich", "9d8f9a3", "Python", "213", "824", "0", "0", "30"],
+    ["Black", "287d570", "Python", "378", "224", "0", "45", "35"],
+    ["jesse", "4fcbcdd", "Python, JS", "1,197", "2,865", "1 (10)", "0", "335"],
+    ["FastAPI", "4bdfbe4", "Python", "1,216", "2,166", "1 (8)", "0", "56"],
+    ["SymPy", "654880a", "Python", "1,609", "18,543", "12 (354)", "0", "1,130"],
+    ["Django", "79502d0", "Python, JS", "2,982", "14,001", "7 (68)", "2", "211"],
+    ["Express", "0dee2c5", "JavaScript", "141", "153", "0", "0", "12"],
+    ["axios", "e6b79d9", "JavaScript", "277", "378", "0", "1", "27"],
+    ["Vue", "0ff253b", "TypeScript", "526", "1,360", "7 (86)", "1", "95"],
+    ["LevelDB", "bb74ef7", "C++", "133", "498", "0", "0", "8"],
+    ["nlohmann/json", "533cbfe", "C++", "605", "1,010", "1 (2)", "2", "56"],
+    ["Redis", "2ac3f66", "C", "906", "1,975", "2 (4)", "3", "94"],
+], [0.15, 0.12, 0.13, 0.09, 0.11, 0.15, 0.12, 0.13], { size: 18, align: [AT.LEFT, AT.LEFT, AT.LEFT, AT.RIGHT, AT.RIGHT, AT.CENTER, AT.CENTER, AT.RIGHT] }));
+add(p("The first run reported 533 broken imports in Django, 54 in Vue, 9 in axios and 5 in Redis. Every one was checked by hand, which found six kinds of false alarm. Each was fixed in the resolver (Section 3.4.2) and covered by a test (T20, T27, T28 and C21):"));
+add(R.bullets([
+    "A folder named `env` was skipped as a Python virtual environment, but axios keeps real code in `lib/env/`. Virtual environments are now recognised by their `pyvenv.cfg` file, whatever their name.",
+    "Django bundles third-party JavaScript under `static/admin/js/vendor/`; 531 of its 533 broken imports were inside one bundled library. `vendor/` folders are now skipped like `node_modules/`.",
+    "Imports of files that exist but are not code (`./style.css`, `./App.vue`, `#include \"commands.def\"` in Redis) and of build output in `dist/`, which is generated later, were counted as broken.",
+    "Vite’s `./main.js?raw` reads a file as text; it is not an import of code.",
+    "TypeScript resolves `./utils` to the type declaration file `utils.d.ts`; 19 of Vue’s broken imports were this case.",
+    "SciPy builds modules such as `_rotation_cy` from Cython and C++ sources. As there is no `_rotation_cy.py`, an import of it fell back to its package’s `__init__.py` and created a false loop.",
+]));
+add(p("The broken imports that remain are real in the sense that the file is not in the repository: Black’s are deliberately invalid formatter inputs in `tests/data/`, Django’s two are test fixtures (one is named `import_error.py`), and Redis’s `release.h` and nlohmann/json’s `hedley_undef_checks.inc` are generated during the build. The loops in Redis (`rdb.h` and `server.h`) and nlohmann/json (`json.hpp` and `json_literals.hpp`) are header pairs that include each other and work only because of include guards. SymPy is the slowest project at about 1.1 s. Its twelve loops contain 354 files, and the greedy cycle fix of Section 3.4.4 runs Tarjan’s algorithm again for every candidate link; a profile showed 57,900 runs, three quarters of the total time."));
+
+add(R.h3("5.2.4 Real circular-import bugs"));
+add(p(`A loop in working code shows only that the code is fragile. The stronger test is whether the program finds loops that actually broke software. GitHub was searched for merged pull requests that fix a circular import, and six from well-known projects were chosen: pydantic ${c("prPydantic")}, LangChain ${c("prLangchain")}, jesse ${c("prJesse")}, TransformerLens ${c("prTransformerLens")}, Astropy ${c("prAstropy")} and SciPy ${c("prScipy")}. For each, the program was run on the commit before the fix and on the fix itself (Table 5.5). Because one component of Tarjan’s algorithm can hold several loops, the table also counts the files that lie in any loop.`));
+add(R.table("5.5", "The program on the code before and after six circular-import fixes", ["Project, pull request", "What broke", "Before the fix", "After the fix"], [
+    ["pydantic #10807 (Nov. 2024)", "A pre-release failed: `cannot import name 'VALIDATE_CALL_SUPPORTED_TYPES'`", "Loop at `_generate_schema.py:100` (that import) and `_validate_call.py:13`; 4 files in loops", "That loop gone; 2 files"],
+    ["LangChain #23182 (Jun. 2024)", "Adding `RunnableWithMessageHistory` to `runnables/__init__.py` would close a loop; the pull request also moved an import", "With only the new import: loop `chat_history.py:29` → `runnables/__init__.py:39` → `history.py:16`", "No such loop"],
+    ["jesse #633 (Oct. 2026)", "`jesse install-live` failed: `cannot import name 'router'`", "Loop `routes/__init__.py:6` → `models/__init__.py:4` → `Exchange.py:6`; 15 files", "That loop gone; 10 files"],
+    ["TransformerLens #1805 (Sep. 2026)", "Importing the adapter factory first failed", "The 4-file loop described in the pull request, line by line", "Still reported (see below)"],
+    ["Astropy #20485 (Sep. 2026)", "Import-order failures in `units` and `coordinates`", "14 components, 125 files", "10 components, 95 files"],
+    ["SciPy #26210 (Sep. 2026)", "`import scipy.spatial.transform` failed once its imports were sorted", "Loop at `_rigid_transform.py:16`; 19 components, 180 files", "That loop gone; 16 components, 148 files"],
+], [0.2, 0.28, 0.3, 0.22], { size: 18 }));
+add(p("In every case the program reports, before the fix, a loop through the lines that the developers changed. Two of the six were missed by the first version of the program, and finding out why improved it. In jesse and TransformerLens the loop passes through a package’s `__init__.py` that no import names directly: `from jesse.models.Route import Route` makes Python run `jesse/models/__init__.py` before `Route.py`, and that file imports `Exchange.py`, which imports `jesse.routes` back. Adding these implicit links (Section 3.4.2, test T19) made the program report both loops exactly as their pull requests describe them. To confirm that the report matches Python, jesse was imported with every third-party package replaced by an empty stand-in, so that only jesse’s own import order was tested. Before the fix Python fails with the error of the bug report, and its traceback lists the same three lines as the program; after the fix the import succeeds."));
+add(p("After the fix the program still reported one loop in jesse, and it is still there in jesse’s newest commit (`4fcbcdd`): `FuturesExchange.py:10` imports `jesse.store`, `store/__init__.py:1` imports `state_app.py`, `state_app.py:2` imports `jesse.models.ExchangeApiKeys`, which runs `models/__init__.py`, and line 5 of that file imports `FuturesExchange.py`. The same stand-in test showed that this is a real failure: a program whose first import is `jesse.store` stops with the error below. It is the same kind of import-order bug that pull request #633 fixed, and at the time of writing it had not been reported."));
+add(...L.codeBlock([
+    "$ python -c 'import jesse.store'",
+    "ImportError: cannot import name 'store' from partially",
+    "  initialized module 'jesse.store' (most likely due to",
+    "  a circular import)",
+    "store/state_app.py:2          from jesse.models.Exchange...",
+    "models/__init__.py:5          from .FuturesExchange import ...",
+    "models/FuturesExchange.py:10  from jesse.store import store",
+], false), L.blank());
+add(p("The test also showed a limit of the program. After its fix TransformerLens still has the same loop, but the import that closes it now names a whole module (`from transformer_lens.factories import architecture_adapter_factory`) instead of a name defined in that module. Python allows importing a module that is still loading, so this loop can no longer fail. The program cannot tell the two cases apart and still reports the loop; separating them is listed as future work (Section 6.2)."));
+
+add(R.h3("5.2.5 Architecture rules"));
 add(p("On the sample project, the layer rules report exactly one violation: `actions/move.py` imports `rules.py`, a higher layer (Figure 4.6). This is the same loop found by Tarjan’s algorithm, seen from the design. Interestingly, the rule points to a different import than the cycle fix (Figure 4.7): the fix removes as few links as possible and prefers `rules.py:4`, while the rule knows which direction the design intends. Both are correct answers to different questions. The program’s own `pdr.rules` passes; when a header of the lowest layer was made to include the analyser in a scratch copy, the check reported both the new cycle and the layer violation."));
 
-add(R.h3("5.2.4 Performance"));
-add(p("`make bench` generates projects shaped like real code (packages of 10 files, each file importing one to five others, one small circular import in every 20 packages, fixed random seed), times each algorithm and reports the median of several runs. All times were measured on the development machine of Table 3.1 with `g++ -O2`. Table 5.4 and Figure 5.2 show the graph algorithms."));
+add(R.h3("5.2.6 Performance"));
+add(p("`make bench` generates projects shaped like real code (packages of 10 files, each file importing one to five others, one small circular import in every 20 packages, fixed random seed), times each algorithm and reports the median of several runs. All times were measured on the development machine of Table 3.1 with `g++ -O2`. Table 5.6 and Figure 5.2 show the graph algorithms."));
 const B = { graph: [], hashmap: [], ranking: [], analyze: [] };
 for (const line of fs.readFileSync(path.join(ROOT, "cpp", "build", "bench.csv"), "utf8").split("\n")) {
     if (!line || line.startsWith("#")) continue;
@@ -467,7 +526,7 @@ for (const line of fs.readFileSync(path.join(ROOT, "cpp", "build", "bench.csv"),
 }
 const n = (x) => x.toLocaleString("en-US");
 const ms = (x) => (x < 10 ? x.toFixed(1) : n(Math.round(x)));
-add(R.table("5.4", "Running time of the graph algorithms (milliseconds)", ["Files (V)", "Import links (E)", "Tarjan SCC", "Kahn + min-heap", "One BFS"],
+add(R.table("5.6", "Running time of the graph algorithms (milliseconds)", ["Files (V)", "Import links (E)", "Tarjan SCC", "Kahn + min-heap", "One BFS"],
     B.graph.map(([v, e, t, k, b]) => [n(v), n(e), ms(t), ms(k), ms(b)]), [0.2, 0.22, 0.18, 0.22, 0.18], { align: [AT.RIGHT, AT.RIGHT, AT.RIGHT, AT.RIGHT, AT.RIGHT] }));
 add(R.figure(fig("bench-graph.png"), "5.2", "Running time of the graph algorithms against V + E"));
 add(p("Tarjan’s algorithm and breadth-first search grow in step with V + E, as their O(V + E) bound predicts: one million files with 2.8 million links take about 0.3 s and 0.07 s. Kahn’s algorithm grows slightly faster than linearly and is the slowest of the three. Part of this is the log V factor of the heap; part is that the condensed graph keeps the neighbours of each unit in a balanced-tree set, which also costs O(log) per insertion. Replacing those sets with the project’s own hash set is a possible improvement."));
@@ -475,20 +534,20 @@ const h1m = B.hashmap.find((r) => r[0] === 1000000);
 add(p(`Figures 5.3 and 5.4 compare the hand-written hash table with \`std::unordered_map\` on file-path keys. Lookups of n present and n absent keys are faster in the hand-written table (${ms(h1m[3])} ms against ${ms(h1m[4])} ms for a million keys), probably mainly because its bucket count is a power of two, so the bucket of a key is found with a bit mask, whereas the GNU implementation of \`std::unordered_map\` uses prime bucket counts and a division. Insertion is slightly slower (${ms(h1m[1])} ms against ${ms(h1m[2])} ms); both tables allocate one node per entry, and the cause of this small difference was not investigated further. Both curves are straight lines, as expected for O(1) operations repeated n times.`));
 add(R.figure(fig("bench-hash-find.png"), "5.3", "Lookup time: hand-written hash table against `std::unordered_map`"));
 add(R.figure(fig("bench-hash-insert.png"), "5.4", "Insertion time: hand-written hash table against `std::unordered_map`"));
-add(R.table("5.5", "Critical-files ranking: one BFS per file against bitsets (milliseconds)", ["Files", "Import links", "One BFS per file", "Bitsets", "Speed-up"],
+add(R.table("5.7", "Critical-files ranking: one BFS per file against bitsets (milliseconds)", ["Files", "Import links", "One BFS per file", "Bitsets", "Speed-up"],
     B.ranking.map(([v, e, f, b]) => [n(v), n(e), f < 0 ? "not run" : ms(f), ms(b), f < 0 ? "—" : `${Math.round(f / b)}×`]), [0.18, 0.2, 0.24, 0.2, 0.18], { align: [AT.RIGHT, AT.RIGHT, AT.RIGHT, AT.RIGHT, AT.RIGHT] }));
-add(p("Table 5.5 and Figure 5.5 show the effect of the bitset method of Section 3.4.6. It gives the same counts as one breadth-first search per file (test T16) between 22 and 33 times faster. Both methods are O(V · (V + E)) in the worst case; the bitsets divide the work by the 64 files held in a machine word, and the remaining gap to 64 is the work outside the word operations. The one-search-per-file method was not run beyond 20,000 files because it becomes too slow to be useful."));
+add(p("Table 5.7 and Figure 5.5 show the effect of the bitset method of Section 3.4.6. It gives the same counts as one breadth-first search per file (test T16) between 22 and 33 times faster. Both methods are O(V · (V + E)) in the worst case; the bitsets divide the work by the 64 files held in a machine word, and the remaining gap to 64 is the work outside the word operations. The one-search-per-file method was not run beyond 20,000 files because it becomes too slow to be useful."));
 add(R.figure(fig("bench-ranking.png"), "5.5", "Critical-files ranking: bitsets against one BFS per file"));
 const a11 = B.analyze.find((r) => r[0] === 11000), aMax = B.analyze[B.analyze.length - 1];
 add(p(`Figure 5.6 shows the whole analysis, from reading the imports to every algorithm, on generated Python projects. It takes ${ms(a11[2])} ms for ${n(a11[0])} files (366 ms before the bitset method) and ${(aMax[2] / 1000).toFixed(1)} s for ${n(aMax[0])} files. The growth is faster than linear because the ranking still grows with V · (V + E); for every project of realistic size the analysis finishes in well under a second.`));
 add(R.figure(fig("bench-analyze.png"), "5.6", "Running time of the whole analysis"));
 
-add(R.h3("5.2.5 Reliability"));
-add(p("The program and its tests were also built with GCC’s AddressSanitizer and UndefinedBehaviorSanitizer, which stop the program at the first invalid memory access, memory leak or undefined operation. All 57 tests, every output mode on the five open-source projects, the program’s own source and a scripted menu session ran without a single report. This matters most for the hash table, whose linked lists are managed with raw pointers. Every push to GitHub runs the full test suite on Ubuntu, so the program is also checked with a second compiler set-up."));
+add(R.h3("5.2.7 Reliability"));
+add(p("The program and its tests were also built with GCC’s AddressSanitizer and UndefinedBehaviorSanitizer, which stop the program at the first invalid memory access, memory leak or undefined operation. All 61 tests, every output mode (`--report`, `--check`, `--json`, `--dot`, `--unused`) on the sixteen projects of Section 5.2.3, the program’s own source and a scripted menu session ran without a single report. This matters most for the hash table, whose linked lists are managed with raw pointers. Every push to GitHub runs the full test suite on Ubuntu, so the program is also checked with a second compiler set-up."));
 
 add(R.h2("5.3 Complexity Analysis"));
-add(p("V is the number of files, E the number of import links, C the number of characters read, L the length of a key and d the depth of a path. Table 5.6 lists the cost of each operation."));
-add(R.table("5.6", "Time and space complexity of each operation", ["Operation", "Time complexity", "Space complexity"], [
+add(p("V is the number of files, E the number of import links, C the number of characters read, L the length of a key and d the depth of a path. Table 5.8 lists the cost of each operation."));
+add(R.table("5.8", "Time and space complexity of each operation", ["Operation", "Time complexity", "Space complexity"], [
     ["Reading imports and their timing", "O(C)", "O(C)"],
     ["Resolving one import (hash tables)", "O(L) on average", "O(V) for the indexes"],
     ["Hash table insert / find / erase", "O(1) average, O(n) worst", "O(n)"],
@@ -512,14 +571,14 @@ add(R.chapterHeading(6, "Conclusion and Future Scope"));
 add(R.h2("6.1 Conclusion"));
 add(p("This project built Package Dependency Resolver, a C++17 program that models a software project as a directed graph of files and imports and explains the problems hidden in that graph. Against the objectives of Section 1.3:"));
 add(R.numbered([
-    "**Graph model.** Python, JavaScript/TypeScript and C/C++ projects are read into a graph of files and imports, with the line of every import. The program analyses its own source as well as the five open-source projects of Section 5.2.",
+    "**Graph model.** Python, JavaScript/TypeScript and C/C++ projects are read into a graph of files and imports, with the line of every import. The program analyses its own source as well as sixteen open-source projects in all three languages (Section 5.2.3).",
     "**Data structures.** Adjacency and reverse adjacency lists, a hash table with separate chaining, a binary min-heap, a character trie, a path trie and bitsets are implemented by hand with the standard library only, and each is tested, including the worst case of a hash table in which every key collides.",
-    "**Circular imports.** Tarjan’s algorithm, run only on imports that execute while modules load, finds every circular import; each is shown as one concrete loop with its lines and a greedy, stability-aware suggestion of which imports to remove. On five working libraries this reduced eight reported loops to the two that are genuinely load-order dependent.",
+    "**Circular imports.** Tarjan’s algorithm, run only on imports that execute while modules load, finds every circular import; each is shown as one concrete loop with its lines and a greedy, stability-aware suggestion of which imports to remove. On five working libraries this reduced eight reported loops to the two that are genuinely load-order dependent. On six real bug fixes it reported the loop each fix removed, at the lines the developers changed, and it found an unreported import-order failure in jesse.",
     "**Order and impact.** Kahn’s algorithm with a min-heap gives a stable build order and layers, breadth-first search explains dependencies and the impact of a change, and bitsets made the critical-files ranking 22 to 33 times faster.",
     "**Rules, unused files and CI.** A rules file of layers, forbidden imports and entries is checked with a path trie; unused files are found with a multi-source search; every problem is printed in a form CI systems understand, with meaningful exit codes. The program checks its own architecture on every test run.",
-    "**Testing and measurement.** 28 engine tests and 29 command-line tests pass on two operating systems, the program runs clean under memory-error checkers, and measurements on projects of up to one million files confirm the linear growth of the graph algorithms.",
+    "**Testing and measurement.** 31 engine tests and 30 command-line tests pass on two operating systems, the program runs clean under memory-error checkers, and measurements on projects of up to one million files confirm the linear growth of the graph algorithms.",
 ]));
-add(p("Beyond the individual algorithms, the project showed how much the choice of model matters: the same Tarjan’s algorithm gave eight false alarms or two true findings depending only on which imports were placed in the graph. Testing on real code that the program was not written for was what exposed this."));
+add(p("Beyond the individual algorithms, the project showed how much the choice of model matters: the same Tarjan’s algorithm gave eight false alarms or two true findings depending only on which imports were placed in the graph. Testing on real code that the program was not written for was what exposed this, and testing on real bug fixes exposed links that Python creates without any import naming them, which the first version missed."));
 add(R.h2("6.2 Future Scope"));
 add(R.bullets([
     "**Package version resolution.** Reading `requirements.txt`, `pyproject.toml` and `package.json` to report packages that are imported but not declared, or declared but never used, and choosing package versions that satisfy all constraints with a backtracking search.",
@@ -527,6 +586,8 @@ add(R.bullets([
     "**Exact C/C++ include paths.** Reading `compile_commands.json` to learn the real `-I` folders instead of matching path endings.",
     "**Very large projects.** Estimating the critical-files counts in near-linear time with Cohen’s method, and analysing only the files that changed since the last run.",
     "**More languages.** Java, Go and Rust use similar import statements and would reuse the whole graph engine.",
+    "**Loops that cannot fail.** Telling a loop that imports a name from a module still loading, which fails, from one that only imports whole modules, which Python allows (TransformerLens after its fix, Section 5.2.4).",
+    "**A faster cycle fix.** Updating the components after each removed link instead of running Tarjan’s algorithm again, which would remove most of SymPy’s 1.1 s.",
 ]));
 
 // =====================================================================
@@ -553,6 +614,12 @@ const REFS = {
     graphviz: "E. R. Gansner and S. C. North, “An open graph visualization system and its applications to software engineering,” *Softw. Pract. Exper.*, vol. 30, no. 11, pp. 1203–1233, 2000.",
     sugiyama: "K. Sugiyama, S. Tagawa, and M. Toda, “Methods for visual understanding of hierarchical system structures,” *IEEE Trans. Syst., Man, Cybern.*, vol. SMC-11, no. 2, pp. 109–125, Feb. 1981.",
     pyimport: "Python Software Foundation, “The import system,” *The Python Language Reference*. [Online]. Available: https://docs.python.org/3/reference/import.html (accessed Oct. 21, 2026).",
+    prPydantic: "pydantic, “Fix circular import with `validate_call`,” GitHub pull request #10807, Nov. 2024. [Online]. Available: https://github.com/pydantic/pydantic/pull/10807 (accessed Oct. 22, 2026).",
+    prLangchain: "LangChain, “core[patch]: fix chat history circular import,” GitHub pull request #23182, Jun. 2024. [Online]. Available: https://github.com/langchain-ai/langchain/pull/23182 (accessed Oct. 22, 2026).",
+    prJesse: "jesse, “Fix the circular import when jesse.routes is imported first,” GitHub pull request #633, Oct. 2026. [Online]. Available: https://github.com/jesse-ai/jesse/pull/633 (accessed Oct. 22, 2026).",
+    prTransformerLens: "TransformerLens, “Fix circular import when the architecture adapter factory is imported first,” GitHub pull request #1805, Sep. 2026. [Online]. Available: https://github.com/TransformerLensOrg/TransformerLens/pull/1805 (accessed Oct. 22, 2026).",
+    prAstropy: "Astropy, “Import from defining modules to break circular imports,” GitHub pull request #20485, Sep. 2026. [Online]. Available: https://github.com/astropy/astropy/pull/20485 (accessed Oct. 22, 2026).",
+    prScipy: "SciPy, “MAINT: break a few circular imports,” GitHub pull request #26210, Sep. 2026. [Online]. Available: https://github.com/scipy/scipy/pull/26210 (accessed Oct. 22, 2026).",
     claude: "Anthropic, “Claude Code,” claude.com. [Online]. Available: https://claude.com/claude-code (accessed Oct. 21, 2026).",
 };
 // cited outside the chapters, so they come last in order
@@ -592,7 +659,7 @@ for (const [module, files] of FILES) {
 appx.push(R.appendixHeading("B", "User Manual"));
 appx.push(R.h3("B.1 Building and installing"));
 appx.push(p("On Linux or macOS with GCC or Clang and Make:"));
-appx.push(...L.codeBlock(["cd cpp", "make            # builds build/pdr", "make test       # runs the 28 engine tests and 29 command-line tests", "make install    # copies pdr to ~/.local/bin, so it runs in any folder", "make bench      # benchmark and its SVG charts (about a minute)", "make dist       # the source zip (from a git checkout)", "make graph      # draws the sample and the program as SVG (needs Graphviz)"], false));
+appx.push(...L.codeBlock(["cd cpp", "make            # builds build/pdr", "make test       # runs the 31 engine tests and 30 command-line tests", "make install    # copies pdr to ~/.local/bin, so it runs in any folder", "make bench      # benchmark and its SVG charts (about a minute)", "make dist       # the source zip (from a git checkout)", "make graph      # draws the sample and the program as SVG (needs Graphviz)"], false));
 appx.push(p("Without Make, for example on Windows with MinGW: `g++ -std=c++17 -O2 -o pdr cpp/src/*.cpp`. Graphviz (`sudo pacman -S graphviz` on Arch Linux) is needed only to draw `--dot` output."));
 appx.push(R.h3("B.2 Running"));
 appx.push(p("Run `pdr` inside a project folder, or give the folder as the first argument. Files can be named by their file name (`main.py`) or by the end of their path (`utils/paths.py`)."));
