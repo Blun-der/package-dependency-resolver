@@ -19,9 +19,11 @@ HashSet<std::string> wordSet(const std::string& words) {
     return out;
 }
 
+// "env" is not here: axios keeps real code in lib/env/. A virtualenv with any
+// name is found by its pyvenv.cfg file instead (see loadProject).
 const HashSet<std::string>& ignoredDirs() {
     static const auto set = wordSet(
-        "node_modules .git __pycache__ venv .venv env .env dist build .next coverage .idea .vscode "
+        "node_modules vendor .git __pycache__ venv .venv dist build .next coverage .idea .vscode "
         "site-packages .mypy_cache .pytest_cache .tox out .cache egg-info");
     return set;
 }

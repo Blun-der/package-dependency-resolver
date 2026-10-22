@@ -38,7 +38,7 @@ Needs a C++17 compiler and Make (tested with GCC 16 on Arch Linux and on Ubuntu)
 ```
 cd cpp
 make            # builds build/pdr
-make test       # 28 engine tests and 29 command-line tests
+make test       # 31 engine tests and 30 command-line tests
 make install    # copies pdr to ~/.local/bin, so "pdr" works in any folder
 make demo       # full report of the sample project
 make bench      # benchmark -> build/bench.csv and build/bench-*.svg (about a minute)

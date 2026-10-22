@@ -67,6 +67,17 @@ std::optional<std::string> pyFileAt(const std::string& dir, const std::string& d
     return std::nullopt;
 }
 
+// A module built from Cython or C/C++ (scipy: transform/_rotation_cy.pyx,
+// _duccfft/pyduccfft.cxx) has no .py file. Without this check "import
+// pkg._rotation_cy" would fall back to pkg/__init__.py and invent a cycle.
+bool isCompiledModule(const std::string& dir, const std::string& name, const ResolveContext& ctx) {
+    for (const char* ext : {".pyx", ".pxd", ".pyi", ".c", ".cc", ".cpp", ".cxx"}) {
+        const std::string p = joinPath(dir, name + ext);
+        if (ctx.otherFiles.contains(p) || ctx.fileSet.contains(p)) return true;
+    }
+    return false;
+}
+
 // Script folder first (Python puts the running script's folder on sys.path),
 // then the project-wide index. A file inside a package (a folder with
 // __init__.py) is not a script: there "import types" means the standard
@@ -82,11 +93,24 @@ std::optional<std::string> lookupPyModule(const std::string& dotted, const std::
     return std::nullopt;
 }
 
+// An import that points at a project path but no code file: is that path a
+// non-code file, or inside a build folder (dist/, build/) that is made later?
+// "./template/main.js?raw" (Vite) reads the file before the "?" as text, so
+// even a code file is not imported as code there.
+bool isNotCode(const std::optional<std::string>& path, const ResolveContext& ctx) {
+    if (!path) return false;
+    const size_t query = path->find('?');
+    const std::string file = path->substr(0, query);
+    return ctx.otherFiles.contains(file) || isIgnored(file) ||
+           (query != std::string::npos && ctx.fileSet.contains(file));
+}
+
 }  // namespace
 
-ResolveContext makeContext(const std::vector<std::string>& sortedPaths) {
+ResolveContext makeContext(const std::vector<std::string>& sortedPaths, const std::vector<std::string>& otherPaths) {
     ResolveContext ctx;
     for (const std::string& p : sortedPaths) ctx.fileSet.insert(p);
+    for (const std::string& p : otherPaths) ctx.otherFiles.insert(p);
     ctx.pyIndex = buildPythonIndex(sortedPaths, ctx.fileSet);
     for (const std::string& p : sortedPaths) {
         if (langOf(p) != Lang::Cpp) continue;
@@ -103,7 +127,8 @@ ResolveContext makeContext(const std::vector<std::string>& sortedPaths) {
     return ctx;
 }
 
-std::vector<Resolution> resolvePython(const Import& imp, const std::string& fromFile, const ResolveContext& ctx) {
+// The modules an import names, without the packages Python runs first.
+static std::vector<Resolution> resolvePythonModules(const Import& imp, const std::string& fromFile, const ResolveContext& ctx) {
     std::vector<Resolution> results;
     if (imp.level > 0) {
         // Relative import: climb (level - 1) folders from the file's own package.
@@ -134,6 +159,8 @@ std::vector<Resolution> resolvePython(const Import& imp, const std::string& from
             for (const std::string& name : imp.names) {
                 if (auto sub = pyFileAt(*base, name, ctx)) {
                     results.push_back({Kind::File, *sub});
+                } else if (isCompiledModule(*base, name, ctx)) {
+                    results.push_back({Kind::NotCode, dots + name});
                 } else {
                     auto init = pyFileAt(*base, "", ctx);
                     results.push_back(init ? Resolution{Kind::File, *init} : Resolution{Kind::Broken, dots + name});
@@ -146,21 +173,59 @@ std::vector<Resolution> resolvePython(const Import& imp, const std::string& from
     // Absolute import
     if (imp.spec.empty()) return results;
     const std::vector<std::string> parts = split(imp.spec, '.');
+    // The package itself is loading when fromFile is inside it.
+    auto compiledIn = [&](const std::string& pkgInit) -> std::vector<Resolution> {
+        std::vector<Resolution> out{{Kind::NotCode, imp.spec}};
+        if (!startsWith(fromFile, dirOf(pkgInit) + "/")) out.push_back({Kind::File, pkgInit});
+        return out;
+    };
     if (imp.kind == ImportKind::From) {
         bool hitSub = false;
+        const auto pkg = lookupPyModule(imp.spec, fromFile, ctx);
+        const bool isPackage = pkg && endsWith(*pkg, "__init__.py");
+        bool compiled = false;
         for (const std::string& name : imp.names) {
             if (auto sub = lookupPyModule(imp.spec + "." + name, fromFile, ctx)) {
                 results.push_back({Kind::File, *sub});
                 hitSub = true;
+            } else if (isPackage && isCompiledModule(dirOf(*pkg), name, ctx)) {
+                compiled = true;
             }
         }
         if (hitSub) return results;
+        if (compiled) return compiledIn(*pkg);
     }
     // "import a.b.c" -> try a.b.c, then a.b, then a
     for (size_t k = parts.size(); k > 0; k--) {
-        if (auto hit = lookupPyModule(join(parts, '.', k), fromFile, ctx)) return {{Kind::File, *hit}};
+        if (auto hit = lookupPyModule(join(parts, '.', k), fromFile, ctx)) {
+            if (k < parts.size() && endsWith(*hit, "__init__.py") && isCompiledModule(dirOf(*hit), parts[k], ctx))
+                return compiledIn(*hit);
+            return {{Kind::File, *hit}};
+        }
     }
     return {{Kind::External, parts[0]}};
+}
+
+// Python runs a module's packages before the module: "from jesse.models.Route
+// import Route" runs jesse/models/__init__.py first, and that file's imports can
+// close a circle (jesse: models/__init__ -> Exchange -> routes). A package the
+// importing file is itself inside is already loading, so it adds nothing.
+std::vector<Resolution> resolvePython(const Import& imp, const std::string& fromFile, const ResolveContext& ctx) {
+    std::vector<Resolution> results = resolvePythonModules(imp, fromFile, ctx);
+    const size_t modules = results.size();
+    for (size_t i = 0; i < modules; i++) {
+        if (results[i].kind != Kind::File) continue;
+        const std::string& file = results[i].value;
+        std::string dir = endsWith(file, "__init__.py") ? dirOf(dirOf(file)) : dirOf(file);
+        for (; !dir.empty() && ctx.fileSet.contains(dir + "/__init__.py"); dir = dirOf(dir)) {
+            if (startsWith(fromFile, dir + "/")) break;  // this package and the ones above it are loading
+            const std::string init = dir + "/__init__.py";
+            const bool seen = std::any_of(results.begin(), results.end(),
+                                          [&](const Resolution& r) { return r.kind == Kind::File && r.value == init; });
+            if (!seen) results.push_back({Kind::File, init});
+        }
+    }
+    return results;
 }
 
 std::vector<Resolution> resolveJs(const Import& imp, const std::string& fromFile, const ResolveContext& ctx) {
@@ -171,6 +236,7 @@ std::vector<Resolution> resolveJs(const Import& imp, const std::string& fromFile
         if (!base) return std::nullopt;
         std::vector<std::string> candidates{*base};
         for (const std::string& e : JS_EXTENSIONS) candidates.push_back(*base + e);
+        candidates.push_back(*base + ".d.ts");  // TypeScript: "./utils" can be utils.d.ts (types only)
         for (const std::string& e : JS_EXTENSIONS) candidates.push_back(joinPath(*base, "index" + e));
         // "./x.js" written in TypeScript source but the file is x.ts
         for (const char* js : {".mjs", ".cjs", ".js"}) {
@@ -186,14 +252,17 @@ std::vector<Resolution> resolveJs(const Import& imp, const std::string& fromFile
     };
 
     if (startsWith(spec, ".") || startsWith(spec, "/")) {
-        auto hit = tryPaths(startsWith(spec, "/") ? normalize(spec) : normalize(joinPath(dirOf(fromFile), spec)));
-        return {hit ? Resolution{Kind::File, *hit} : Resolution{Kind::Broken, spec}};
+        const auto base = startsWith(spec, "/") ? normalize(spec) : normalize(joinPath(dirOf(fromFile), spec));
+        if (auto hit = tryPaths(base)) return {{Kind::File, *hit}};
+        return {{isNotCode(base, ctx) ? Kind::NotCode : Kind::Broken, spec}};
     }
     if (startsWith(spec, "@/") || startsWith(spec, "~/")) {
         const std::string rest = spec.substr(2);
-        auto hit = tryPaths(normalize("src/" + rest));
-        if (!hit) hit = tryPaths(normalize(rest));
-        return {hit ? Resolution{Kind::File, *hit} : Resolution{Kind::Broken, spec}};
+        const auto inSrc = normalize("src/" + rest), atRoot = normalize(rest);
+        auto hit = tryPaths(inSrc);
+        if (!hit) hit = tryPaths(atRoot);
+        if (hit) return {{Kind::File, *hit}};
+        return {{isNotCode(inSrc, ctx) || isNotCode(atRoot, ctx) ? Kind::NotCode : Kind::Broken, spec}};
     }
     // Bare name: an outside package. "@scope/pkg/sub" -> "@scope/pkg", "lodash/get" -> "lodash"
     const std::string pkg = startsWith(spec, "node:") ? spec.substr(5) : spec;
@@ -213,8 +282,9 @@ std::vector<Resolution> resolveCpp(const Import& imp, const std::string& fromFil
 
     if (!quoted && isBuiltin(Lang::Cpp, package)) return {{Kind::External, package}};
     if (quoted) {
-        if (auto local = normalize(joinPath(dirOf(fromFile), spec)); local && ctx.fileSet.contains(*local))
-            return {{Kind::File, *local}};
+        const auto local = normalize(joinPath(dirOf(fromFile), spec));
+        if (local && ctx.fileSet.contains(*local)) return {{Kind::File, *local}};
+        if (isNotCode(local, ctx)) return {{Kind::NotCode, spec}};  // #include "commands.def"
     }
     if (auto clean = normalize(spec); clean && !startsWith(spec, "..")) {
         if (const std::vector<std::string>* files = ctx.cSuffixes.find(*clean)) {

@@ -95,10 +95,15 @@ std::vector<SourceFile> loadProject(const std::string& folder) {
         if (ec) throw std::runtime_error("cannot read " + folder + ": " + ec.message());
         const std::string rel = it->path().lexically_relative(root).generic_string();
         if (it->is_directory(ec)) {
-            if (isIgnored(rel)) it.disable_recursion_pending();  // never walk into node_modules etc.
+            // never walk into node_modules etc., or a virtualenv of any name
+            if (isIgnored(rel) || fs::exists(it->path() / "pyvenv.cfg", ec)) it.disable_recursion_pending();
             continue;
         }
-        if (!it->is_regular_file(ec) || langOf(rel) == Lang::None || isIgnored(rel)) continue;
+        if (!it->is_regular_file(ec) || isIgnored(rel)) continue;
+        if (langOf(rel) == Lang::None) {  // only the path, so "./style.css" is not a broken import
+            files.push_back({rel, ""});
+            continue;
+        }
         std::ifstream in(it->path(), std::ios::binary);
         std::ostringstream content;
         content << in.rdbuf();
@@ -114,11 +119,14 @@ Result analyze(std::vector<SourceFile> files, const AnalyzeOptions& options) {
     Result r;
 
     std::vector<SourceFile> clean;
+    std::vector<std::string> otherPaths;  // files that are not code
     for (SourceFile& f : files) {
         std::string p = f.path;
         std::replace(p.begin(), p.end(), '\\', '/');
         if (startsWith(p, "./")) p = p.substr(2);
-        if (langOf(p) != Lang::None && !isIgnored(p)) clean.push_back({p, std::move(f.content)});
+        if (isIgnored(p)) continue;
+        if (langOf(p) != Lang::None) clean.push_back({p, std::move(f.content)});
+        else otherPaths.push_back(p);
     }
 
     if (options.stripRoot && !clean.empty()) {
@@ -129,13 +137,15 @@ Result analyze(std::vector<SourceFile> files, const AnalyzeOptions& options) {
         if (shared) {
             r.rootName = first;
             for (SourceFile& f : clean) f.path = f.path.substr(first.size() + 1);
+            for (std::string& p : otherPaths)
+                if (startsWith(p, first + "/")) p = p.substr(first.size() + 1);
         }
     }
 
     std::vector<std::string> paths;
     for (const SourceFile& f : clean) paths.push_back(f.path);
     std::sort(paths.begin(), paths.end());
-    const ResolveContext ctx = makeContext(paths);
+    const ResolveContext ctx = makeContext(paths, otherPaths);
 
     Graph& graph = r.graph;
     Graph& loadGraph = r.loadGraph;
@@ -188,6 +198,8 @@ Result analyze(std::vector<SourceFile> files, const AnalyzeOptions& options) {
                     case Resolution::Kind::Broken:
                         r.broken.push_back({f.path, x.value, imp.line, imp.text});
                         info.imports.push_back({ImportRef::Type::Broken, x.value, imp.line, imp.text});
+                        break;
+                    case Resolution::Kind::NotCode:  // a stylesheet, data file or build output: not part of the graph
                         break;
                 }
             }

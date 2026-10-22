@@ -334,10 +334,11 @@ void pythonResolution() {
         {"proj/scripts/helpers.py", ""},
     }, {true, {}});
     CHECK_EQ(r.rootName, std::string("proj"));
-    CHECK_EQ(r.graph.outNames("src/app/main.py"), (Strings{"src/app/core/engine.py"}));
+    // importing app.core.engine runs app/core/__init__.py first; app/ itself is already loading
+    CHECK_EQ(r.graph.outNames("src/app/main.py"), (Strings{"src/app/core/__init__.py", "src/app/core/engine.py"}));
     CHECK_EQ(r.graph.outNames("src/app/core/__init__.py"), (Strings{"src/app/core/engine.py"}));
     CHECK_EQ(r.graph.outNames("src/app/core/engine.py"), (Strings{"src/app/util.py"}));
-    CHECK_EQ(r.graph.outNames("scripts/run.py"), (Strings{"scripts/helpers.py", "src/app/main.py"}));
+    CHECK_EQ(r.graph.outNames("scripts/run.py"), (Strings{"scripts/helpers.py", "src/app/__init__.py", "src/app/main.py"}));
     Strings ext;
     for (const ExternalPackage& e : r.externals) ext.push_back(e.name);
     CHECK_EQ(sorted(ext), (Strings{"os", "requests"}));
@@ -366,6 +367,44 @@ void loadTimeCycles() {
     CHECK_EQ(r.stats.typeCheckingImports, 1);
     // inside a package, "import types" is the standard library, not pkg/types.py
     CHECK_EQ(r.graph.outNames("pkg/a.py"), (Strings{"pkg/b.py"}));
+}
+
+// jesse PR #633: routes imports models.Route, which runs models/__init__.py first,
+// and that imports Exchange, which imports routes back.
+void parentPackageCycles() {
+    const Result r = analyze({
+        {"jesse/__init__.py", ""},
+        {"jesse/routes/__init__.py", "from jesse.models.Route import Route\nrouter = 1"},
+        {"jesse/models/__init__.py", "from .Exchange import Exchange\nfrom .Route import Route"},
+        {"jesse/models/Exchange.py", "from jesse.routes import router"},
+        {"jesse/models/Route.py", ""},
+    });
+    CHECK_EQ(r.graph.outNames("jesse/routes/__init__.py"), (Strings{"jesse/models/Route.py", "jesse/models/__init__.py"}));
+    CHECK_EQ(r.cycles.size(), size_t{1});
+    if (!r.cycles.empty())
+        CHECK_EQ(r.cycles[0].files,
+                 (Strings{"jesse/models/Exchange.py", "jesse/models/__init__.py", "jesse/routes/__init__.py"}));
+}
+
+// scipy PR #26210: _rotation_cy and pyduccfft are compiled (.pyx, .cxx), so
+// importing them must not fall back to the package's __init__.py.
+void compiledModulesNoCycle() {
+    const Result r = analyze({
+        {"scipy/__init__.py", ""},
+        {"scipy/transform/__init__.py", "from ._rotation import Rotation"},
+        {"scipy/transform/_rotation.py", "import scipy.transform._rotation_cy as backend\n"
+                                         "from scipy.transform import _rotation_cy"},
+        {"scipy/transform/_rotation_cy.pyx", ""},
+        {"scipy/fft/__init__.py", "from .basic import fft"},
+        {"scipy/fft/basic.py", "from . import pyduccfft as pfft"},
+        {"scipy/fft/pyduccfft.cxx", ""},
+        {"tools/run.py", "from scipy.transform import _rotation_cy"},
+    });
+    CHECK_EQ(r.cycles.size(), size_t{0});
+    CHECK(r.graph.outNames("scipy/transform/_rotation.py").empty());
+    CHECK(r.graph.outNames("scipy/fft/basic.py").empty());
+    // from outside, the package still has to load first
+    CHECK_EQ(r.graph.outNames("tools/run.py"), (Strings{"scipy/__init__.py", "scipy/transform/__init__.py"}));
 }
 
 // ---------- architecture rules and unused files ----------
@@ -677,9 +716,31 @@ void dotExport() {
 void ignoredFoldersSkipped() {
     const Result r = analyze({
         {"a.py", "import b"}, {"b.py", ""},
-        {"venv/lib/x.py", ""}, {"node_modules/m/i.js", ""}, {"README.md", "# hi"},
+        {"venv/lib/x.py", ""}, {"node_modules/m/i.js", ""}, {"js/vendor/lib.js", "require('./gone')"},
+        {"README.md", "# hi"},
     });
     CHECK_EQ(sorted(r.graph.names(r.graph.nodesByName())), (Strings{"a.py", "b.py"}));
+}
+
+// Found on real projects: axios keeps code in lib/env/, Vue imports ./style.css,
+// ./App.vue, ./x.html?raw and ./dist/ build output, redis does #include "commands.def".
+void nonCodeImportsNotBroken() {
+    const Result r = analyze({
+        {"lib/env/data.js", ""}, {"lib/axios.js", "import { VERSION } from './env/data.js'"},
+        {"types/test.ts", "import { expectType } from './utils'"}, {"types/utils.d.ts", ""},
+        {"web/main.ts", "import App from './App.vue'\nimport './style.css'\nimport t from './t.html?raw'\nimport m from './App.vue?raw'\n"
+                        "import j from '../lib/axios.js?raw'\n"
+                        "import x from './dist/x.cjs.js'\nimport gone from './gone.css'"},
+        {"web/App.vue", "<template/>"}, {"web/style.css", ""}, {"web/t.html", ""},
+        {"src/commands.c", "#include \"commands.def\"\n#include \"missing.def\""}, {"src/commands.def", ""},
+    });
+    CHECK_EQ(r.graph.outNames("lib/axios.js"), (Strings{"lib/env/data.js"}));
+    CHECK(r.graph.outNames("web/main.ts").empty());  // ?raw reads a file as text
+    CHECK_EQ(r.graph.outNames("types/test.ts"), (Strings{"types/utils.d.ts"}));
+    Strings broken;
+    for (const BrokenImport& b : r.broken) broken.push_back(b.spec);
+    CHECK_EQ(sorted(broken), (Strings{"./gone.css", "missing.def"}));
+    CHECK_EQ(r.stats.files, 6);  // non-code files are not nodes
 }
 
 // ---------- end to end on the bundled sample ----------
@@ -760,6 +821,8 @@ int main(int argc, char** argv) {
         {"bitset reach counts equal one BFS per file (random graphs, sliced)", reachCountsMatchBfs},
         {"python resolution: packages, relative, src layout, externals, broken", pythonResolution},
         {"cycles use load-time imports only; package-local names do not shadow the stdlib", loadTimeCycles},
+        {"importing a.b.c runs a/b/__init__.py first, which can close a cycle", parentPackageCycles},
+        {"compiled modules (.pyx, .cxx) are not their package's __init__.py", compiledModulesNoCycle},
         {"js resolution: extensions, index files, aliases, packages", jsResolution},
         {"path trie: folders, files, module files, whole names", pathTrieMatches},
         {"rules file: layers with |, forbid, entry, errors with line numbers", rulesParsing},
@@ -767,6 +830,7 @@ int main(int argc, char** argv) {
         {"unused files: scripts, tests, __main__, parent packages, entries, headers", unusedFiles},
         {"c/c++ resolution: same folder, path ending, closest, system, broken", cppResolution},
         {"ignored folders and non-code files are skipped", ignoredFoldersSkipped},
+        {"imports of existing non-code files and build output are not broken", nonCodeImportsNotBroken},
         {"sample daemon project: cycle, order, critical files, path, fix", sampleProject},
         {"graphviz export of the sample", dotExport},
         {"json output is valid json (own checker), with quotes and backslashes", jsonOutput},

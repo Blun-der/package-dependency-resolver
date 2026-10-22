@@ -32,7 +32,7 @@ version does not have:
 ```
 cd cpp
 make                                   # build/pdr
-make test                              # 28 engine tests + 29 command-line tests
+make test                              # 31 engine tests + 30 command-line tests
 make bench                             # timings -> build/bench.csv and charts (about a minute)
 make dist                              # the zip to hand in -> build/v5-package-dependency-resolver.zip
 make graph                             # draw the sample and this program as SVG (needs graphviz)
@@ -113,7 +113,7 @@ Without `make` (Windows / Code::Blocks): `g++ -std=c++17 -O2 -o pdr cpp/src/*.cp
 | `cpp/src/path_trie.h` | trie over folder names, for matching rule paths |
 | `cpp/pdr.rules` | this program's own architecture, checked by `make test` |
 | `cpp/src/main.cpp` | console menu and command-line options |
-| `cpp/tests/engine_tests.cpp` | the 13 tests, ported, plus 15 for the C++-only features |
+| `cpp/tests/engine_tests.cpp` | the 13 tests, ported, plus 18 for the C++-only features |
 | `cpp/tests/cli_test.sh` | command-line tests: exit codes, `--check`, `--json`, `--dot` (run by `make test`) |
 | `cpp/bench/bench.cpp` | benchmark on generated projects (`make bench`) |
 | `cpp/bench/chart.h` | draws the benchmark charts as SVG, in C++ |

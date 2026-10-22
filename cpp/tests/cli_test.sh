@@ -76,6 +76,13 @@ expect "rules: missing rules file" 2 "cannot read rules file" "$SAMPLE" --check 
 expect "unused files" 0 "None. Every file is reached from a start file." "$SAMPLE" --unused
 printf '' >"$TMP/clean/pkg/old.py"
 expect "unused file is listed" 0 "    pkg/old.py" "$TMP/clean" --unused
+mkdir -p "$TMP/envs/lib/env" "$TMP/envs/myenv/lib"
+printf 'from lib.env import data\n' >"$TMP/envs/main.py"
+printf '' >"$TMP/envs/lib/env/data.py"
+printf 'home = /usr/bin\n' >"$TMP/envs/myenv/pyvenv.cfg"
+printf 'import missing_module_x\n' >"$TMP/envs/myenv/lib/site.py"
+expect "a virtualenv is found by pyvenv.cfg; a folder named env is code" 0 \
+    "pdr: 2 files, 0 circular imports, 0 broken imports -> OK" "$TMP/envs" --check
 
 # --dot must be valid Graphviz
 if command -v dot >/dev/null 2>&1; then
