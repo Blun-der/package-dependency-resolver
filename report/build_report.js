@@ -204,7 +204,7 @@ add(R.table("3.2", "Data structures used and justification", ["Data structure", 
     ["Adjacency list (array of sorted edge lists)", "The dependency graph: the files each file imports", "Import graphs are sparse: O(V + E) space instead of O(V²) for a matrix", "Visit all neighbours O(degree); add edge O(degree) to keep the list sorted"],
     ["Reverse adjacency list", "The files that import a given file", "“Who uses this file?” is as cheap as “what does it use?”", "Visit importers O(degree)"],
     ["Hash table with separate chaining (linked lists)", "File name → node id, module name → file, path ending → files, sets of visited links", "Resolving every import needs a fast lookup by string", "Insert / find / erase O(1) on average, O(n) worst case; growth amortised O(1)"],
-    ["Binary min-heap", "Kahn’s algorithm: files ready to be placed", "Always takes the alphabetically first ready file, so the order is stable", "Push / pop O(log n)"],
+    ["Binary min-heap", "Kahn’s algorithm: files ready to be placed", "Always takes the ready file of the lowest layer, alphabetically first among equals, so the order is stable and grouped by layer", "Push / pop O(log n)"],
     ["Stack (explicit)", "Tarjan’s algorithm: the current search path and the call stack", "Replaces recursion, so deep projects cannot overflow the call stack", "Push / pop O(1)"],
     ["Queue", "Breadth-first searches", "Visits files in order of distance, giving shortest chains", "Enqueue / dequeue O(1)"],
     ["Trie of characters", "File search by name or path prefix", "Prefix search independent of the number of files", "Insert and search O(length of the key)"],
@@ -272,11 +272,11 @@ add(p("Table 3.3 shows the method on the sample’s three-file loop. Removing an
 add(R.h3("3.4.5 Build order and layers"));
 add(p(`Kahn’s algorithm ${c("kahn")} only works on a graph without loops, so each component found by Tarjan’s algorithm is first collapsed into a single unit. The condensed graph has no loops, and Kahn’s algorithm then always produces a complete order:`));
 add(R.numbered([
-    "For each unit, count the units it depends on. Push every unit with count 0 into the min-heap, ordered by the name of its first file.",
+    "For each unit, count the units it depends on. Push every unit with count 0 into the min-heap, ordered by layer and then by the name of its first file.",
     "Pop the smallest unit and append it to the order. For each unit that depends on it, set its layer to at least this unit’s layer + 1 and decrease its count; push it when the count reaches 0.",
     "Repeat until the heap is empty. Units of two or more files are shown as “loaded together (cycle)”.",
 ]));
-add(p("Every unit enters and leaves the heap once, so the cost is O(V log V + E). The layer of a unit is 0 if it imports nothing and otherwise one more than the highest layer it imports."));
+add(p("Every unit enters and leaves the heap once, so the cost is O(V log V + E). The layer of a unit is 0 if it imports nothing and otherwise one more than the highest layer it imports. A unit is pushed only when everything it imports has been placed, so its layer is final by then; ordering the heap by layer first therefore lists every unit of layer 0, then every unit of layer 1, and so on, which is still a valid topological order and is easier to read."));
 
 add(R.h3("3.4.6 Dependency counts with bitsets"));
 add(p("For each file the system reports how many files it needs and how many files need it. One breadth-first search per file costs O(V · (V + E)). The system computes the same numbers on the components instead:"));
@@ -349,7 +349,7 @@ add(R.listing("4.5", "Trying each link of a loop (`algorithms.cpp`)", excerpt(sr
 
 add(R.h3("4.2.7 Build order with a min-heap"));
 add(R.listing("4.6", "Kahn’s algorithm on the condensed graph (`algorithms.cpp`)", excerpt(src("algorithms.cpp"), "while (!heap.empty()) {", "if (--remaining[d] == 0) heap.push(d);") + "\n    }\n}"));
-add(p("The heap is a hand-written binary min-heap template ordered by a comparison function; here it compares the name of the first file of each unit, so files that become ready at the same time are placed alphabetically."));
+add(p("The heap is a hand-written binary min-heap template ordered by a comparison function; here it compares the layer of each unit and then the name of its first file, so the order is grouped by layer and alphabetical within a layer."));
 
 add(R.h3("4.2.8 Dependency counts with bitsets"));
 add(p("Listing 4.7 is the pass of Section 3.4.6 over one slice of files. `rows` holds one row of `words` 64-bit words per component; `setBit` marks a file of the current slice."));
@@ -396,7 +396,7 @@ const engine = [
     ["Hash table basics", "Duplicate insert, overwrite, 5,000 inserts, erase, copy", "Values correct, load factor ≤ 0.75, longest chain ≤ 8, deep copy"],
     ["Hash table collisions", "100 keys with a hash that always returns 0", "One chain of 100; find and erase from its middle still work"],
     ["Tarjan components", "a→b→c→a, c→d, e→d", "Components {a,b,c}, {d}, {e}"],
-    ["Build order with a cycle", "Graph with a two-file loop x↔y", "json, db, web, x+y, app; layers 0 … 2"],
+    ["Build order with a cycle", "Graph with a two-file loop x↔y", "json, x+y, db, web, app (by layer); layers 0 … 2"],
     ["Long chain", "5,001 files in a chain", "Complete order, no stack overflow"],
     ["Shortest path, reachability", "a→b→c, a→c, c→d", "a→c→d; no path back; importers of d are a, b, c"],
     ["Cycle fix", "Shared link, two disjoint loops, stability tie, size limit", "1 link, 2 links, `zcore→plugin`, no plan over the limit"],
@@ -536,10 +536,12 @@ add(R.figure(fig("bench-hash-find.png"), "5.3", "Lookup time: hand-written hash 
 add(R.figure(fig("bench-hash-insert.png"), "5.4", "Insertion time: hand-written hash table against `std::unordered_map`"));
 add(R.table("5.7", "Critical-files ranking: one BFS per file against bitsets (milliseconds)", ["Files", "Import links", "One BFS per file", "Bitsets", "Speed-up"],
     B.ranking.map(([v, e, f, b]) => [n(v), n(e), f < 0 ? "not run" : ms(f), ms(b), f < 0 ? "—" : `${Math.round(f / b)}×`]), [0.18, 0.2, 0.24, 0.2, 0.18], { align: [AT.RIGHT, AT.RIGHT, AT.RIGHT, AT.RIGHT, AT.RIGHT] }));
-add(p("Table 5.7 and Figure 5.5 show the effect of the bitset method of Section 3.4.6. It gives the same counts as one breadth-first search per file (test T16) between 22 and 33 times faster. Both methods are O(V · (V + E)) in the worst case; the bitsets divide the work by the 64 files held in a machine word, and the remaining gap to 64 is the work outside the word operations. The one-search-per-file method was not run beyond 20,000 files because it becomes too slow to be useful."));
+const speedUps = B.ranking.filter((r) => r[2] > 0).map((r) => Math.round(r[2] / r[3]));
+const speedUp = `${Math.min(...speedUps)} to ${Math.max(...speedUps)}`;
+add(p("Table 5.7 and Figure 5.5 show the effect of the bitset method of Section 3.4.6. It gives the same counts as one breadth-first search per file (test T16) between " + speedUp.replace(" to ", " and ") + " times faster. Both methods are O(V · (V + E)) in the worst case; the bitsets divide the work by the 64 files held in a machine word, and the remaining gap to 64 is the work outside the word operations. The one-search-per-file method was not run beyond 20,000 files because it becomes too slow to be useful."));
 add(R.figure(fig("bench-ranking.png"), "5.5", "Critical-files ranking: bitsets against one BFS per file"));
 const a11 = B.analyze.find((r) => r[0] === 11000), aMax = B.analyze[B.analyze.length - 1];
-add(p(`Figure 5.6 shows the whole analysis, from reading the imports to every algorithm, on generated Python projects. It takes ${ms(a11[2])} ms for ${n(a11[0])} files (366 ms before the bitset method) and ${(aMax[2] / 1000).toFixed(1)} s for ${n(aMax[0])} files. The growth is faster than linear because the ranking still grows with V · (V + E); for every project of realistic size the analysis finishes in well under a second.`));
+add(p(`Figure 5.6 shows the whole analysis, from reading the imports to every algorithm, on generated Python projects. It takes ${ms(a11[2])} ms for ${n(a11[0])} files (${n(a11[1])} links, including the links to parent packages of Section 3.4.2) and ${(aMax[2] / 1000).toFixed(1)} s for ${n(aMax[0])} files. The growth is faster than linear because the ranking still grows with V · (V + E); for every project of realistic size the analysis finishes in well under a second.`));
 add(R.figure(fig("bench-analyze.png"), "5.6", "Running time of the whole analysis"));
 
 add(R.h3("5.2.7 Reliability"));
@@ -574,7 +576,7 @@ add(R.numbered([
     "**Graph model.** Python, JavaScript/TypeScript and C/C++ projects are read into a graph of files and imports, with the line of every import. The program analyses its own source as well as sixteen open-source projects in all three languages (Section 5.2.3).",
     "**Data structures.** Adjacency and reverse adjacency lists, a hash table with separate chaining, a binary min-heap, a character trie, a path trie and bitsets are implemented by hand with the standard library only, and each is tested, including the worst case of a hash table in which every key collides.",
     "**Circular imports.** Tarjan’s algorithm, run only on imports that execute while modules load, finds every circular import; each is shown as one concrete loop with its lines and a greedy, stability-aware suggestion of which imports to remove. On five working libraries this reduced eight reported loops to the two that are genuinely load-order dependent. On six real bug fixes it reported the loop each fix removed, at the lines the developers changed, and it found an unreported import-order failure in jesse.",
-    "**Order and impact.** Kahn’s algorithm with a min-heap gives a stable build order and layers, breadth-first search explains dependencies and the impact of a change, and bitsets made the critical-files ranking 22 to 33 times faster.",
+    `**Order and impact.** Kahn’s algorithm with a min-heap gives a stable build order and layers, breadth-first search explains dependencies and the impact of a change, and bitsets made the critical-files ranking ${speedUp} times faster.`,
     "**Rules, unused files and CI.** A rules file of layers, forbidden imports and entries is checked with a path trie; unused files are found with a multi-source search; every problem is printed in a form CI systems understand, with meaningful exit codes. The program checks its own architecture on every test run.",
     "**Testing and measurement.** 31 engine tests and 30 command-line tests pass on two operating systems, the program runs clean under memory-error checkers, and measurements on projects of up to one million files confirm the linear growth of the graph algorithms.",
 ]));
@@ -679,6 +681,7 @@ appx.push(grid(["Command", "What it does"], [
 ], [0.38, 0.62], { size: 21 }));
 appx.push(...blank(1));
 appx.push(p("Exit codes: 0 when no problem is found, 1 when `--check` found problems, 2 for incorrect use or a folder that cannot be read or has no code."));
+appx.push(p("On a terminal, problems are shown in red, suggested fixes in yellow and “None” or “OK” in green. Output that goes to a file, a pipe or a CI log is plain text. Setting the environment variable `NO_COLOR=1` turns the colours off. In the menu, the program waits for Enter after each answer so that the answer stays on the screen."));
 appx.push(R.h3("B.3 Architecture rules"));
 appx.push(p("Create a file named `pdr.rules` in the project folder. Lines starting with `#` are comments."));
 appx.push(...L.codeBlock(["# top layer first: a layer may import the layers below it, never one above", "layers  app/ui  app/services|app/jobs  app/db", "", "# nothing under app/db may import app/ui", "forbid  app/db -> app/ui", "", "# extra start points for --unused", "entry   scripts"], false));
