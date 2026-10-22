@@ -295,7 +295,7 @@ void buildOrderCollapsesCycles() {
         flat.push_back(joined);
         if (u.cyclic) CHECK_EQ(g.names(u.files), (Strings{"x", "y"}));
     }
-    CHECK_EQ(flat, (Strings{"json", "db", "web", "x+y", "app"}));
+    CHECK_EQ(flat, (Strings{"json", "x+y", "db", "web", "app"}));  // by layer, then name
     CHECK_EQ(bo.layerOf[g.id("json")], 0);
     CHECK_EQ(bo.layerOf[g.id("app")], 2);
 }

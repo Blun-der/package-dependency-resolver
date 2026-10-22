@@ -269,7 +269,12 @@ BuildOrder buildOrder(const Graph& graph, const std::vector<Component>& sccs) {
 
     std::vector<size_t> remaining(units);
     std::vector<int> layer(units, 0);
-    auto less = [&](int x, int y) { return graph.name(sccs[x][0]) < graph.name(sccs[y][0]); };
+    // A unit's layer is final when it is pushed (all its dependencies are out),
+    // so ordering by layer first lists every layer 0 unit, then layer 1, ...
+    auto less = [&](int x, int y) {
+        if (layer[x] != layer[y]) return layer[x] < layer[y];
+        return graph.name(sccs[x][0]) < graph.name(sccs[y][0]);
+    };
     MinHeap<int, decltype(less)> heap(less);
     for (size_t i = 0; i < units; i++) {
         remaining[i] = deps[i].size();

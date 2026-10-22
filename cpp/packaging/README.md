@@ -75,7 +75,7 @@ their file name (`main.py`) or by the end of their path (`utils/paths.py`).
 | `pdr --help` | help |
 
 Exit codes: 0 no problems, 1 `--check` found problems, 2 bad usage or a folder that cannot be read or
-has no code.
+has no code. Colours appear only on a terminal, never in pipes or CI logs; `NO_COLOR=1` turns them off.
 
 ## Try it on the sample
 
@@ -119,6 +119,27 @@ Python runs a module from top to bottom the first time it is imported, so only a
 `--why`, `--impact` and the critical-files ranking still count every import, because a file depends on
 what it imports inside a function too.
 
+Importing `a.b.c` also runs `a/__init__.py` and `a/b/__init__.py` first (unless the importing file is
+inside that package, which is then already loading), so those count as links too. jesse's PR #633 bug
+went through such a hidden step: `from jesse.models.Route import Route` ran `jesse/models/__init__.py`,
+which imported a file that imported `jesse.routes` back.
+
+## Tested on real projects and real bug fixes
+
+pdr was run on 16 open-source projects (October 2026): requests, flask, httpx, rich, click, Django, SymPy,
+FastAPI, Black and jesse (Python), Express, axios and Vue (JavaScript/TypeScript), Redis, LevelDB and
+nlohmann/json (C/C++). Most take 5 to 300 ms; SymPy (1,609 files) takes about 1.1 s. Checking every
+reported broken import by hand found false alarms (a code folder named `env/`, bundled `vendor/` code,
+imports of `.css`, `.vue` and `.def` files, `dist/` build output, `?raw` imports, TypeScript `.d.ts`
+files, Cython modules), which are all handled now.
+
+It was also run on the code before and after six merged pull requests that fixed a circular import:
+pydantic #10807, LangChain #23182, jesse #633, TransformerLens #1805, Astropy #20485 and SciPy #26210.
+Before each fix pdr reports a loop through the lines the developers changed. In jesse's latest code it
+also finds a loop nobody had reported: with `import jesse.store` as the first import, Python fails with
+`cannot import name 'store' from partially initialized module 'jesse.store'`
+(`store/__init__.py` → `state_app.py` → `models/__init__.py` → `FuturesExchange.py` → `store`).
+
 ## Architecture rules (`pdr.rules`)
 
 ```
@@ -138,7 +159,7 @@ and warns about rule paths that match no file.
 |---|---|---|
 | Adjacency list + reverse adjacency list | the graph: what a file imports, who imports it | O(V + E) space |
 | Hash table with separate chaining (`hash_map.h`) | file and module lookups while resolving imports | O(1) average |
-| Binary min-heap (`min_heap.h`) | Kahn's algorithm, alphabetical and stable | O(log n) push / pop |
+| Binary min-heap (`min_heap.h`) | Kahn's algorithm: by layer, then alphabetical, so the order is stable | O(log n) push / pop |
 | Trie (`trie.*`) | file search by name or path prefix | O(length of the prefix) |
 | Path trie (`path_trie.h`) | rule paths, one node per folder name | O(depth of the path) |
 | Bitsets | how many files each file reaches | 64 files per machine word |
@@ -157,3 +178,5 @@ V = files, E = import links.
 - Unused files depend on recognising start files (scripts, tests, entry points); a library's public
   modules must be named with `entry`.
 - Rule paths are folders and files, not wildcards.
+- A loop whose imports only name whole modules (`from pkg import module`) cannot fail, because Python
+  allows importing a module that is still loading, but it is still reported.

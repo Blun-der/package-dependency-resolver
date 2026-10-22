@@ -154,6 +154,11 @@ Two graphs are kept with the same nodes. **Every import** drives `--why`, `--imp
 ranking, because a file still depends on what it imports inside a function. **Load-time imports** drive
 Tarjan's algorithm, the cycle fix and the build order. In `--dot` output the other imports are dotted.
 
+Importing `a.b.c` also runs `a/__init__.py` and `a/b/__init__.py` first (unless the importing file is
+inside that package, which is then already loading), so those count as links too. jesse's PR #633 bug
+went through such a hidden step: `from jesse.models.Route import Route` ran `jesse/models/__init__.py`,
+which imported a file that imported `jesse.routes` back.
+
 Tested on five well-known Python projects (shallow clones, October 2026):
 
 | Project | Files | Imports inside functions / type-checking only | Cycles, all imports | Cycles, load-time only |
@@ -168,6 +173,22 @@ These libraries work, so counting every import reports loops that cannot fail. T
 load-time loops that work only because of the order of the lines, the situation the tool is meant to
 flag. Flask's example is the well-known Flask pattern: `__init__.py` creates `app` and then imports
 `views`, which imports `app` back. Moving that import above `app = Flask(__name__)` breaks it.
+
+### Tested on real projects and real bug fixes
+
+pdr was run on 16 open-source projects (October 2026): requests, flask, httpx, rich, click, Django, SymPy,
+FastAPI, Black and jesse (Python), Express, axios and Vue (JavaScript/TypeScript), Redis, LevelDB and
+nlohmann/json (C/C++). Most take 5 to 300 ms; SymPy (1,609 files) takes about 1.1 s. Checking every
+reported broken import by hand found false alarms (a code folder named `env/`, bundled `vendor/` code,
+imports of `.css`, `.vue` and `.def` files, `dist/` build output, `?raw` imports, TypeScript `.d.ts`
+files, Cython modules), which are all handled now.
+
+It was also run on the code before and after six merged pull requests that fixed a circular import:
+pydantic #10807, LangChain #23182, jesse #633, TransformerLens #1805, Astropy #20485 and SciPy #26210.
+Before each fix pdr reports a loop through the lines the developers changed. In jesse's latest code it
+also finds a loop nobody had reported: with `import jesse.store` as the first import, Python fails with
+`cannot import name 'store' from partially initialized module 'jesse.store'`
+(`store/__init__.py` → `state_app.py` → `models/__init__.py` → `FuturesExchange.py` → `store`).
 
 ### Architecture rules
 
@@ -445,8 +466,8 @@ Folders such as `node_modules`, `venv`, `.git`, `__pycache__`, `dist` and `build
 
 - Static analysis only: imports built at runtime (`importlib.import_module(name)`, `require(variable)`)
   cannot be seen.
-- Python's implicit import of parent packages (`import a.b` also runs `a/__init__.py`) is not drawn as a
-  separate edge.
+- A loop whose imports only name whole modules (`from pkg import module`) cannot fail, because Python
+  allows importing a module that is still loading, but it is still reported (TransformerLens after #1805).
 - Path aliases other than `@/` and `~/` (custom `tsconfig` paths) are reported as external packages.
 - The critical-files ranking is still O(V · (V + E)) in the worst case, only 64 times smaller: about
   2 s for 100,000 files, growing faster than linearly.

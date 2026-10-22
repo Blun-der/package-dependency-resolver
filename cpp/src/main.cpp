@@ -15,6 +15,7 @@
 //
 // Exit codes: 0 = OK, 1 = --check found problems, 2 = bad usage or unreadable folder.
 #include <algorithm>
+#include <cstdlib>
 #include <filesystem>
 #include <fstream>
 #include <iomanip>
@@ -28,22 +29,65 @@
 #include "dot_export.h"
 #include "json_report.h"
 
+#ifndef _WIN32
+#include <unistd.h>
+#endif
+
 using namespace pdr;
 
 namespace {
+
+// Colors only on a terminal, so pipes, files and CI logs stay plain text.
+// NO_COLOR (no-color.org) or TERM=dumb turns them off.
+bool isTerminal(int fd) {
+#ifdef _WIN32
+    (void)fd;
+    return false;
+#else
+    return isatty(fd);
+#endif
+}
+
+bool colorOn() {
+    static const bool on = [] {
+        const char* term = std::getenv("TERM");
+        return isTerminal(1) && !std::getenv("NO_COLOR") && !(term && std::string(term) == "dumb");
+    }();
+    return on;
+}
+
+std::string paint(const std::string& text, const char* code) {
+    return colorOn() ? "\033[" + std::string(code) + "m" + text + "\033[0m" : text;
+}
+std::string bold(const std::string& s) { return paint(s, "1"); }
+std::string red(const std::string& s) { return paint(s, "1;31"); }
+std::string green(const std::string& s) { return paint(s, "32"); }
+std::string yellow(const std::string& s) { return paint(s, "33"); }
+std::string dim(const std::string& s) { return paint(s, "2"); }
 
 std::string plural(size_t n, const std::string& one, const std::string& many = "") {
     return std::to_string(n) + " " + (n == 1 ? one : (many.empty() ? one + "s" : many));
 }
 
+// A count that is bad when it is not 0: red, or green when it is 0.
+std::string problemCount(size_t n) { return n ? red(std::to_string(n)) : green("0"); }
+
 void heading(const std::string& title) {
-    std::cout << "\n== " << title << " " << std::string(title.size() < 60 ? 60 - title.size() : 0, '=') << "\n\n";
+    const size_t used = title.size() + 4;  // "== " + title + " "
+    std::cout << "\n" << paint("== " + title + " " + std::string(used < 64 ? 64 - used : 3, '='), "1;36") << "\n\n";
+}
+
+// The folder's own name, so "pdr" in ~/code/shop shows "shop" and not ".".
+std::string projectName(const std::string& folder) {
+    std::error_code ec;
+    const std::filesystem::path p = std::filesystem::weakly_canonical(folder, ec);
+    return ec || p.filename().empty() ? folder : p.filename().string();
 }
 
 void printSummary(const Result& r, const std::string& folder) {
     const Stats& s = r.stats;
     heading("Summary");
-    std::cout << "  Project              " << folder << "\n"
+    std::cout << "  Project              " << bold(projectName(folder)) << "\n"
               << "  Files                " << s.files << "  (" << s.pythonFiles << " Python, " << s.jsFiles
               << " JavaScript/TypeScript, " << s.cppFiles << " C/C++)\n"
               << "  Import statements    " << s.importStatements
@@ -53,11 +97,12 @@ void printSummary(const Result& r, const std::string& folder) {
                       : "")
               << "\n"
               << "  Links between files  " << s.edges << "\n"
-              << "  Circular imports     " << s.cycles << (s.cycles ? "  (" + plural(s.filesInCycles, "file") + ")" : "")
-              << "\n"
-              << "  Broken imports       " << s.broken << "\n"
-              << (r.hasRules ? "  Rule violations      " + std::to_string(s.ruleViolations) + "\n" : "")
-              << "  Unused files         " << s.unused << "  (" << plural(s.startFiles, "start file") << ")\n"
+              << "  Circular imports     " << problemCount(s.cycles)
+              << (s.cycles ? "  (" + plural(s.filesInCycles, "file") + ")" : "") << "\n"
+              << "  Broken imports       " << problemCount(s.broken) << "\n"
+              << (r.hasRules ? "  Rule violations      " + problemCount(s.ruleViolations) + "\n" : "")
+              << "  Unused files         " << (s.unused ? yellow(std::to_string(s.unused)) : std::to_string(s.unused))
+              << "  (" << plural(s.startFiles, "start file") << ")\n"
               << "  Outside packages     " << s.externals << "  (" << s.thirdParty << " to install)\n"
               << "  Layers               " << s.layers << "\n"
               << "  Analysed in          " << std::fixed << std::setprecision(1) << s.ms << " ms\n";
@@ -65,8 +110,8 @@ void printSummary(const Result& r, const std::string& folder) {
 
 void printSteps(const std::vector<Step>& steps) {
     for (const Step& st : steps) {
-        std::cout << "    " << st.from << "  imports  " << st.to << "\n"
-                  << "        line " << st.line << ":  " << st.text << "\n";
+        std::cout << "    " << st.from << dim("  imports  ") << st.to << "\n"
+                  << dim("        line " + std::to_string(st.line) + ":  ") << st.text << "\n";
     }
 }
 
@@ -78,14 +123,15 @@ void printCycles(const Result& r) {
                   << " inside functions or\n  for type checking only run later or never, so they cannot cause a circular import error.\n\n";
     }
     if (r.cycles.empty()) {
-        std::cout << "  None. No files import each other in a loop.\n";
+        std::cout << "  " << green("None.") << " No files import each other in a loop.\n";
         return;
     }
     for (size_t i = 0; i < r.cycles.size(); i++) {
         const Cycle& c = r.cycles[i];
-        std::cout << "  " << i + 1 << ". " << plural(c.files.size(), "file") << " import each other:\n";
+        const std::string title = std::to_string(i + 1) + ". " + plural(c.files.size(), "file") + " import each other:";
+        std::cout << "  " << bold(title) << "\n";
         std::cout << "    ";
-        for (size_t k = 0; k < c.loop.size(); k++) std::cout << (k ? " -> " : "") << c.loop[k];
+        for (size_t k = 0; k < c.loop.size(); k++) std::cout << (k ? red(" -> ") : "") << c.loop[k];
         std::cout << "\n\n  Lines that make the loop:\n";
         printSteps(c.steps);
         if (c.fixTooLarge) {
@@ -94,22 +140,22 @@ void printCycles(const Result& r) {
             std::cout << "\n  To break it, remove " << (c.fix.size() == 1 ? "this import" : "these imports")
                       << " (greedy search, fewest files left in a loop):\n";
             for (const Step& st : c.fix)
-                std::cout << "    " << st.from << "  line " << st.line << ":  " << st.text << "\n";
+                std::cout << "    " << yellow(st.from + "  line " + std::to_string(st.line) + ":  " + st.text) << "\n";
         }
-        std::cout << "\n";
+        if (i + 1 < r.cycles.size()) std::cout << "\n";
     }
 }
 
 void printBroken(const Result& r) {
     heading("Broken imports (point to files that do not exist)");
     if (r.broken.empty()) {
-        std::cout << "  None. Every local import points to a real file.\n";
+        std::cout << "  " << green("None.") << " Every local import points to a real file.\n";
         return;
     }
     for (const BrokenImport& b : r.broken) {
         std::cout << "  " << b.file << "  line " << b.line << "\n"
                   << "      " << b.text << "\n"
-                  << "      '" << b.spec << "' was not found\n";
+                  << "      " << red("'" + b.spec + "' was not found") << "\n";
     }
 }
 
@@ -117,9 +163,11 @@ void printOrder(const Result& r) {
     heading("Build order (Kahn's topological sort, dependencies first)");
     int step = 1;
     for (const OrderUnit& u : r.order) {
-        std::cout << "  " << std::setw(3) << step++ << ".  [layer " << u.layer << "]  ";
+        std::ostringstream num;
+        num << std::setw(3) << step++ << ".";
+        std::cout << "  " << num.str() << "  " << dim("[layer " + std::to_string(u.layer) + "]") << "  ";
         if (u.cyclic) {
-            std::cout << "loaded together (cycle):\n";
+            std::cout << yellow("loaded together (cycle):") << "\n";
             for (const std::string& f : u.files) std::cout << "                      " << f << "\n";
         } else {
             std::cout << u.files[0] << "\n";
@@ -133,12 +181,21 @@ void printCritical(const Result& r, size_t limit = 10) {
         std::cout << "  No file is imported by another file.\n";
         return;
     }
-    std::cout << "  " << std::left << std::setw(40) << "File" << std::right << std::setw(12) << "Affects"
-              << std::setw(14) << "Imported by" << "\n";
-    for (size_t i = 0; i < r.critical.size() && i < limit; i++) {
+    const size_t shown = std::min(limit, r.critical.size());
+    size_t width = 4;  // the longest path shown, so long paths do not push the numbers out of line
+    for (size_t i = 0; i < shown; i++) width = std::max(width, r.critical[i].size());
+    // "1 file " is as wide as "7 files", so the numbers line up
+    auto files = [](size_t n) { return plural(n, "file") + (n == 1 ? " " : ""); };
+    std::cout << "  " << bold([&] {
+        std::ostringstream h;
+        h << std::left << std::setw(static_cast<int>(width)) << "File" << std::right << std::setw(12) << "Affects"
+          << std::setw(14) << "Imported by";
+        return h.str();
+    }()) << "\n";
+    for (size_t i = 0; i < shown; i++) {
         const Metrics& m = r.metricsOf(r.critical[i]);
-        std::cout << "  " << std::left << std::setw(40) << r.critical[i] << std::right << std::setw(12)
-                  << plural(m.dependents, "file") << std::setw(14) << plural(m.fanIn, "file") << "\n";
+        std::cout << "  " << std::left << std::setw(static_cast<int>(width)) << r.critical[i] << std::right
+                  << std::setw(12) << files(m.dependents) << std::setw(14) << files(m.fanIn) << "\n";
     }
 }
 
@@ -151,7 +208,8 @@ void printExternals(const Result& r) {
     bool shownHeader[2] = {false, false};
     for (const ExternalPackage& e : r.externals) {
         if (!shownHeader[e.builtin]) {
-            std::cout << (e.builtin ? "\n  Built into the language:\n" : "  Must be installed:\n");
+            std::cout << (e.builtin ? "\n  " + bold("Built into the language:") : "  " + bold("Must be installed:"))
+                      << "\n";
             shownHeader[e.builtin] = true;
         }
         std::cout << "    " << std::left << std::setw(20) << e.name << std::right << "used by "
@@ -165,10 +223,10 @@ void printUnused(const Result& r) {
               << "  C/C++ source files (" << r.stats.startFiles << " here), plus 'entry' lines of pdr.rules.\n"
               << "  A library's public modules can show up here: add them as entries. Check before deleting.\n\n";
     if (r.unused.empty()) {
-        std::cout << "  None. Every file is reached from a start file.\n";
+        std::cout << "  " << green("None.") << " Every file is reached from a start file.\n";
         return;
     }
-    for (const std::string& f : r.unused) std::cout << "    " << f << "\n";
+    for (const std::string& f : r.unused) std::cout << "    " << yellow(f) << "\n";
 }
 
 void printRules(const Result& r) {
@@ -176,13 +234,13 @@ void printRules(const Result& r) {
     heading("Architecture rules (pdr.rules)");
     for (const std::string& w : r.ruleCheck.warnings) std::cout << "  " << w << "\n";
     if (r.ruleCheck.violations.empty()) {
-        std::cout << "  No violations.\n";
+        std::cout << "  " << green("No violations.") << "\n";
         return;
     }
     for (const RuleViolation& v : r.ruleCheck.violations) {
         std::cout << "  " << v.file << "  imports  " << v.target << "\n"
                   << "      line " << v.line << ":  " << v.text << "\n"
-                  << "      breaks: " << v.rule << "  (" << r.ruleCheck.source << ":" << v.ruleLine << ")\n";
+                  << "      breaks: " << red(v.rule) << "  (" << r.ruleCheck.source << ":" << v.ruleLine << ")\n";
     }
 }
 
@@ -193,7 +251,8 @@ void printSearch(const Result& r, const std::string& prefix) {
 }
 
 // Exact path, or a unique prefix match of a file name / path.
-std::optional<std::string> findFile(const Result& r, const std::string& input) {
+// Problems are written to `out`: stdout in the menu, stderr on the command line.
+std::optional<std::string> findFile(const Result& r, const std::string& input, std::ostream& out = std::cout) {
     if (r.graph.has(input)) return input;
     std::vector<std::string> hits = r.trie.search(input, 10);
     if (hits.empty()) {
@@ -208,10 +267,10 @@ std::optional<std::string> findFile(const Result& r, const std::string& input) {
     for (const std::string& h : hits)
         if (baseName(h) == input) exact.push_back(h);
     if (exact.size() == 1) return exact[0];
-    if (hits.empty()) std::cout << "  No file matches '" << input << "'.\n";
+    if (hits.empty()) out << "  No file matches '" << input << "'.\n";
     else {
-        std::cout << "  '" << input << "' matches several files, be more specific:\n";
-        for (const std::string& h : hits) std::cout << "    " << h << "\n";
+        out << "  '" << input << "' matches several files, be more specific:\n";
+        for (const std::string& h : hits) out << "    " << h << "\n";
     }
     return std::nullopt;
 }
@@ -290,33 +349,37 @@ bool printCheck(const Result& r, bool allowCycles, bool allowBroken) {
             std::string loop;
             for (size_t k = 0; k < c.loop.size(); k++) loop += (k ? " -> " : "") + c.loop[k];
             const Step& first = c.steps.front();
-            std::cout << first.from << ":" << first.line << ": error: circular import: " << loop << "\n";
+            std::cout << first.from << ":" << first.line << ": " << red("error:") << " circular import: " << loop
+                      << "\n";
             for (const Step& st : c.steps)
                 std::cout << "    " << st.from << ":" << st.line << ":  " << st.text << "\n";
             for (const Step& st : c.fix)
-                std::cout << "    fix: remove " << st.from << ":" << st.line << ":  " << st.text << "\n";
+                std::cout << "    " << yellow("fix:") << " remove " << st.from << ":" << st.line << ":  " << st.text << "\n";
             problems++;
         }
     }
     if (!allowBroken) {
         for (const BrokenImport& b : r.broken) {
-            std::cout << b.file << ":" << b.line << ": error: broken import '" << b.spec
+            std::cout << b.file << ":" << b.line << ": " << red("error:") << " broken import '" << b.spec
                       << "' (no such file in the project)\n";
             problems++;
         }
     }
     for (const RuleViolation& v : r.ruleCheck.violations) {
-        std::cout << v.file << ":" << v.line << ": error: " << v.rule << " (" << r.ruleCheck.source << ":"
+        std::cout << v.file << ":" << v.line << ": " << red("error:") << " " << v.rule << " (" << r.ruleCheck.source << ":"
                   << v.ruleLine << ")\n"
                   << "    " << v.file << ":" << v.line << ":  " << v.text << "\n";
         problems++;
     }
-    for (const std::string& w : r.ruleCheck.warnings) std::cout << w << "\n";
+    for (std::string w : r.ruleCheck.warnings) {
+        if (const size_t at = w.find(": warning:"); at != std::string::npos) w.replace(at + 2, 8, yellow("warning:"));
+        std::cout << w << "\n";
+    }
     std::cout << "pdr: " << plural(r.stats.files, "file") << ", " << plural(r.stats.cycles, "circular import")
               << (allowCycles ? " (allowed)" : "") << ", " << plural(r.stats.broken, "broken import")
               << (allowBroken ? " (allowed)" : "")
               << (r.hasRules ? ", " + plural(r.stats.ruleViolations, "rule violation") : "") << " -> "
-              << (problems ? "FAILED" : "OK") << "\n";
+              << (problems ? red("FAILED") : green("OK")) << "\n";
     return problems > 0;
 }
 
@@ -327,11 +390,24 @@ std::string ask(const std::string& prompt) {
     return trim(line);
 }
 
+// After an answer in the menu, wait so the answer does not scroll away
+// under the next menu. Only on a keyboard: a piped script just goes on.
+void pause() {
+    if (isTerminal(0)) ask(dim("\nPress Enter to return to the menu."));
+}
+
 void menu(const Result& r, const std::string& folder) {
+    const Stats& s = r.stats;
+    const std::string status =
+        s.cycles + s.broken + s.ruleViolations
+            ? red(plural(s.cycles, "circular import") + ", " + plural(s.broken, "broken import") +
+                  (r.hasRules ? ", " + plural(s.ruleViolations, "rule violation") : ""))
+            : green("no circular or broken imports");
     for (;;) {
-        std::cout << "\n==== Package Dependency Resolver ====\n"
-                  << "Project: " << folder << "  (" << plural(r.stats.files, "file") << ", "
-                  << plural(r.stats.edges, "import link") << ")\n\n"
+        std::cout << "\n" << paint("==== Package Dependency Resolver ====", "1;36") << "\n"
+                  << "Project: " << bold(projectName(folder)) << "  (" << plural(s.files, "file") << ", "
+                  << plural(s.edges, "import link") << ")\n"
+                  << "Status:  " << status << "\n\n"
                   << "  1. Summary\n"
                   << "  2. Circular imports\n"
                   << "  3. Broken imports\n"
@@ -346,7 +422,8 @@ void menu(const Result& r, const std::string& folder) {
                   << (r.hasRules ? " 12. Architecture rules\n" : "")
                   << "  0. Exit\n";
         const std::string choice = ask("\nChoice: ");
-        if (!std::cin || choice == "0") return;
+        if (!std::cin || choice == "0" || choice == "q") return;
+        if (choice.empty()) continue;
         if (choice == "1") printSummary(r, folder);
         else if (choice == "2") printCycles(r);
         else if (choice == "3") printBroken(r);
@@ -370,7 +447,9 @@ void menu(const Result& r, const std::string& folder) {
             printRules(r);
         } else {
             std::cout << "  Please type a number from the menu.\n";
+            continue;
         }
+        pause();
     }
 }
 
@@ -398,10 +477,11 @@ const char* const HELP =
     "  --help                 show this help\n"
     "\n"
     "Files can be given as a path, a file name, or the end of a path.\n"
+    "Colours are used only on a terminal; NO_COLOR=1 turns them off.\n"
     "Exit codes: 0 OK, 1 --check found problems, 2 bad usage or unreadable folder.\n";
 
 int usage(const std::string& problem) {
-    std::cerr << "pdr: " << problem << "\n\n" << HELP;
+    std::cerr << "pdr: " << problem << "\nRun 'pdr --help' to see the commands.\n";
     return USAGE;
 }
 
@@ -477,12 +557,12 @@ int main(int argc, char** argv) {
     } else if (command == "--report") {
         printReport(r, folder);
     } else if (command == "--why") {
-        auto a = findFile(r, params[0]);
-        auto b = findFile(r, params[1]);
+        auto a = findFile(r, params[0], std::cerr);
+        auto b = findFile(r, params[1], std::cerr);
         if (!a || !b) return USAGE;
         printWhy(r, *a, *b);
     } else if (command == "--impact") {
-        auto f = findFile(r, params[0]);
+        auto f = findFile(r, params[0], std::cerr);
         if (!f) return USAGE;
         printImpact(r, *f);
     } else if (command == "--search") {
