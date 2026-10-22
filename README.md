@@ -186,7 +186,7 @@ files, Cython modules), which are all handled now.
 It was also run on the code before and after six merged pull requests that fixed a circular import:
 pydantic #10807, LangChain #23182, jesse #633, TransformerLens #1805, Astropy #20485 and SciPy #26210.
 Before each fix pdr reports a loop through the lines the developers changed. In jesse's latest code it
-also finds a loop nobody had reported: with `import jesse.store` as the first import, Python fails with
+also found a loop nobody had reported (now [jesse issue #636](https://github.com/jesse-ai/jesse/issues/636)): with `import jesse.store` as the first import, Python fails with
 `cannot import name 'store' from partially initialized module 'jesse.store'`
 (`store/__init__.py` → `state_app.py` → `models/__init__.py` → `FuturesExchange.py` → `store`).
 
