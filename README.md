@@ -30,8 +30,8 @@ optional and only needed to draw `--dot` output as an image.
 ### 1. Get the code
 
 ```
-git clone <this repository's URL>
-cd gt-package-dependency-resolver/cpp
+git clone https://github.com/Blun-der/package-dependency-resolver.git
+cd package-dependency-resolver/cpp
 ```
 
 ### 2. Install the tools (if you do not have them)
