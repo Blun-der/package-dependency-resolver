@@ -4,3 +4,11 @@ cpp/build/
 __pycache__/
 report/node_modules/
 report/build/
+
+# kept locally, not part of the repository
+/src/
+/build.js
+/dist/
+/test/
+/report/
+/cpp/bench/

@@ -24,8 +24,7 @@ structure it needs (graph, hash table, min-heap, tries, bitsets) is written by h
 ```
 cpp/src/            the program (24 files)
 cpp/tests/          engine tests (engine_tests.cpp) and command-line tests (cli_test.sh)
-cpp/bench/          benchmark on generated projects, draws its own SVG charts
-cpp/Makefile        build, test, install, benchmark
+cpp/Makefile        build, test, install
 cpp/pdr.rules       this program's own architecture, checked by its tests
 sample/fad_demo/    a small file automation daemon (17 Python files) used as the example
 sample/fad_demo.rules   architecture rules for the example
@@ -41,7 +40,6 @@ make            # builds build/pdr
 make test       # 31 engine tests and 30 command-line tests
 make install    # copies pdr to ~/.local/bin, so "pdr" works in any folder
 make demo       # full report of the sample project
-make bench      # benchmark -> build/bench.csv and build/bench-*.svg (about a minute)
 make graph      # draws the sample and this program as SVG (needs Graphviz)
 ```
 

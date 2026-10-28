@@ -14,12 +14,8 @@ the files of one project). Open a Python, JavaScript/TypeScript or C/C++ project
 It does not choose versions of downloaded packages (what pip or npm do); "dependency" always means an
 import between two files of the project.
 
-There are two versions of the same engine:
-
-| Version | Where | Use it for |
-|---|---|---|
-| **C++ command-line program** `pdr` (course submission) | `cpp/` | terminal and CI use; the most features |
-| **Web app** | `dist/index.html` | a quick look in the browser, nothing to install; your code is never uploaded |
+It is a command-line program, `pdr`, written in C++17 with only the standard library: the graph, hash
+table, min-heap, tries and bitsets are written by hand. The code is in `cpp/src/`.
 
 ## Installation (C++ program)
 
@@ -78,15 +74,11 @@ g++ -std=c++17 -O2 -o pdr src/*.cpp            # from the cpp/ folder; on Window
 ### Other make targets
 
 ```
-make bench       # timings -> build/bench.csv and charts (about a minute)
 make graph       # draw the sample and this program as SVG (needs graphviz)
 make dist        # the zip to hand in -> build/v5-package-dependency-resolver.zip
 ```
 
-## What the C++ version adds
-
-It started as a port of the JavaScript engine (the graph, hash table, min-heap, tries and bitsets are
-written by hand) and adds things the web version does not have:
+## More features
 
 - **C/C++ projects**: `#include "x.h"` and `#include <x.h>` are read, so the tool can analyse its own source
 - **only real circular imports**: imports inside functions, under `if TYPE_CHECKING:` or under
@@ -96,7 +88,6 @@ written by hand) and adds things the web version does not have:
 - **unused files**: files that no script, test or entry point reaches
 - **faster critical-files ranking** with bitsets
 - **graph images**: `--dot` writes the graph for Graphviz
-- **a benchmark**: `make bench` measures the algorithms on generated projects of up to a million files
 
 ## Usage
 
@@ -172,10 +163,8 @@ project the step is:
 | `cpp/src/path_trie.h` | trie over folder names, for matching rule paths |
 | `cpp/pdr.rules` | this program's own architecture, checked by `make test` |
 | `cpp/src/main.cpp` | console menu and command-line options |
-| `cpp/tests/engine_tests.cpp` | the 13 tests, ported, plus 18 for the C++-only features |
+| `cpp/tests/engine_tests.cpp` | 31 engine tests |
 | `cpp/tests/cli_test.sh` | command-line tests: exit codes, `--check`, `--json`, `--dot` (run by `make test`) |
-| `cpp/bench/bench.cpp` | benchmark on generated projects (`make bench`) |
-| `cpp/bench/chart.h` | draws the benchmark charts as SVG, in C++ |
 | `cpp/packaging/README.md` | the README of the zip made by `make dist` (C++ program only) |
 
 ### Hand-written hash table
@@ -353,11 +342,8 @@ loop are red, the imports the cycle fix suggests removing are dashed, and broken
 
 ### Benchmark
 
-`make bench` builds `cpp/bench/bench.cpp`, generates projects shaped like real code (packages of 10 files,
-each file importing 1 to 5 others, one small circular import per 20 packages, fixed random seed), and
-writes the median of several runs to `build/bench.csv`, then draws the charts `build/bench-*.svg` itself
-(`bench/chart.h`; `pdr_bench --charts build/bench.csv DIR` redraws them without running again).
-Results on an AMD Ryzen AI 7 350, g++ -O2:
+Measured on generated projects shaped like real code (packages of 10 files, each file importing 1 to 5
+others, one small circular import per 20 packages, fixed random seed), median of several runs. Results on an AMD Ryzen AI 7 350, g++ -O2:
 
 | Files | Import links | Tarjan | Kahn + min-heap | One BFS |
 |---|---|---|---|---|
@@ -403,35 +389,11 @@ Timings change from machine to machine and run to run; the shapes of the curves 
 2. A real project: `git clone --depth 1 https://github.com/pallets/flask && cd flask && pdr --check`
    finds the loop in `examples/javascript/js_example` and nothing in Flask itself.
 
-## How to run the web version
-
-Open `dist/index.html` in Chrome, Edge or Firefox. No installation needed.
-Click **Open project folder** and pick your project (for example the File Automation Daemon folder).
-A bundled file automation daemon project loads on start, so the page is never empty.
-
-Developer commands (need Node.js 18 or newer):
-
-```
-node --test test/engine.test.js   # run the 13 tests
-node build.js                     # rebuild dist/index.html after editing src/
-```
-
-## Project structure
-
-```
-src/engine.js          all parsing, data structures and algorithms (no libraries)
-src/app.html           the user interface
-build.js               bundles engine + UI + sample into one HTML file
-dist/index.html        the finished app (open this)
-test/engine.test.js    unit and end-to-end tests
-sample/fad_demo/       a small file automation daemon used as the built-in example
-```
-
 ## How it works
 
 ```
 project folder
-   │  read every .py / .js / .ts file
+   │  read every .py / .js / .ts / .c / .cpp / .h file
    ▼
 parse imports ──► resolve each import to a file (hash map)
    │
@@ -450,16 +412,16 @@ An edge **A → B** means "file A imports file B".
 
 | Structure | Where it is used | Why |
 |---|---|---|
-| Hash map (`Map`) | module name → file path, file → info | O(1) lookup while resolving imports |
-| Adjacency list | `graph.adj`: file → files it imports | dependency graphs are sparse, so O(V + E) space instead of O(V²) for a matrix |
-| Reverse adjacency list | `graph.radj`: file → files that import it | answers "who uses this file?" in O(1) per neighbour |
+| Hash map (`HashMap`, `hash_map.h`) | module name → file path, file → info | O(1) lookup while resolving imports |
+| Adjacency list | `Graph::out`: file → files it imports | dependency graphs are sparse, so O(V + E) space instead of O(V²) for a matrix |
+| Reverse adjacency list | `Graph::in`: file → files that import it | answers "who uses this file?" in O(1) per neighbour |
 | Binary min-heap | Kahn's algorithm | always picks the alphabetically first ready file, so the order is stable |
 | Stack | Tarjan's algorithm (iterative, so no recursion limit on deep projects) | tracks the current DFS path |
 | Queue | BFS | shortest chains and reachability |
-| Trie | file search box and path finder | prefix search in O(length of what you typed) |
-| Path trie (C++) | rule paths, one node per folder name | every rule containing a file in O(depth of its path) |
+| Trie | `--search` and finding files by name | prefix search in O(length of what you typed) |
+| Path trie | rule paths, one node per folder name | every rule containing a file in O(depth of its path) |
 | Set | visited nodes, deduplication | O(1) membership tests |
-| Bitset (C++) | which files each component reaches, 64 files per machine word | one OR handles 64 files |
+| Bitset | which files each component reaches, 64 files per machine word | one OR handles 64 files |
 
 ### Algorithms and complexity (V = files, E = import links)
 
@@ -470,9 +432,8 @@ An edge **A → B** means "file A imports file B".
 | Build order | condense each cycle to one unit, then Kahn's topological sort with a min-heap | O(V log V + E) |
 | Layers | layer = 1 + max layer of the files it imports, computed during Kahn's | O(V + E) |
 | Impact of a change | BFS on the reverse graph | O(V + E) per file |
-| Critical files ranking | bitsets over the components in Tarjan's order (C++); the BFS above for every file (web) | O(V / 64 · (V + E)) |
+| Critical files ranking | bitsets over the components in Tarjan's order | O(V / 64 · (V + E)) |
 | Why A needs B | BFS with parent pointers gives the shortest chain | O(V + E) |
-| Graph drawing | files placed in columns by layer, rows reordered by barycenter sweeps to reduce crossing lines | O(sweeps · E log V) |
 
 ### Why Tarjan before Kahn?
 
@@ -490,7 +451,7 @@ are shown as one step ("loaded together").
 - Relative imports (`from . import x`, `from ..pkg import y`) climb folders from the importing file.
 - Searched in the importing file's own folder first, then in every source root
   (the project root, a `src/` folder that holds packages, and any folder of scripts without `__init__.py`).
-  In the C++ version the own-folder search happens only for scripts: inside a package (a folder with
+  The own-folder search happens only for scripts: inside a package (a folder with
   `__init__.py`), `import types` is the standard library, never the package's own `types.py`.
 - Anything not found is external. Known standard library names (`os`, `json`, `pathlib`…) are marked built-in.
 - A relative import that is not found is reported as **broken**.
@@ -504,7 +465,8 @@ Folders such as `node_modules`, `venv`, `.git`, `__pycache__`, `dist` and `build
 
 ## Tests
 
-`test/engine.test.js` has 13 tests:
+`make test` runs `cpp/tests/engine_tests.cpp` (31 tests) and `cpp/tests/cli_test.sh` (30 command-line
+tests: exit codes, `--check`, `--json`, `--dot`, rules, unused files). The engine tests include:
 
 1. Python import forms, aliases, multi-line imports, and line numbers
 2. JavaScript import, export-from, require and dynamic import; comments ignored
@@ -544,7 +506,6 @@ Folders such as `node_modules`, `venv`, `.git`, `__pycache__`, `dist` and `build
 - Read `requirements.txt` / `package.json` and flag packages that are imported but not listed (or listed but unused).
 - Check installed package versions against version constraints (backtracking resolver).
 - Support more languages (Java, Go) and C/C++ include folders from `compile_commands.json`.
-- Bring the C++-only features (C/C++ files, load-time cycles, cycle fixes, graph export) to the web version.
 - Estimate the critical-files ranking for huge projects instead of counting exactly: no known exact
   method is much faster than the bitsets in general, while estimates (Cohen's size-estimation method,
   1997) run in near-linear time.
