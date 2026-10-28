@@ -1,7 +1,7 @@
 # Package Dependency Resolver
 
-A tool that reads a code project and shows how its files depend on each other.
-Open a Python or JavaScript/TypeScript project folder and it will:
+A tool that reads a code project and shows how its **files depend on each other** (the imports between
+the files of one project). Open a Python, JavaScript/TypeScript or C/C++ project folder and it will:
 
 - draw the **dependency graph** (which file imports which)
 - find **circular imports** and show the exact lines that cause them
@@ -11,13 +11,82 @@ Open a Python or JavaScript/TypeScript project folder and it will:
 - answer **"why does file A need file B?"** with the shortest chain of imports
 - list **outside packages**, split into "must be installed" and "built into the language"
 
-Everything runs in the browser. Your code is never uploaded.
+It does not choose versions of downloaded packages (what pip or npm do); "dependency" always means an
+import between two files of the project.
 
-## C++ version (course submission)
+There are two versions of the same engine:
 
-`cpp/` holds the same engine in C++17, using only the standard library. The graph, hash table, min-heap,
-tries and bitsets are written by hand. It started as a port of the JavaScript engine and adds things the web
-version does not have:
+| Version | Where | Use it for |
+|---|---|---|
+| **C++ command-line program** `pdr` (course submission) | `cpp/` | terminal and CI use; the most features |
+| **Web app** | `dist/index.html` | a quick look in the browser, nothing to install; your code is never uploaded |
+
+## Installation (C++ program)
+
+**You need:** a C++17 compiler (g++ or clang++), `make` and `git`. Nothing else: the program uses only the
+C++ standard library. Tested with GCC 16 on Arch Linux and on Ubuntu. [Graphviz](https://graphviz.org) is
+optional and only needed to draw `--dot` output as an image.
+
+### 1. Get the code
+
+```
+git clone <this repository's URL>
+cd gt-package-dependency-resolver/cpp
+```
+
+### 2. Install the tools (if you do not have them)
+
+| System | Command |
+|---|---|
+| Ubuntu / Debian | `sudo apt install build-essential git` (and `graphviz`, optional) |
+| Arch Linux | `sudo pacman -S base-devel git` (and `graphviz`, optional) |
+| macOS | `xcode-select --install` (and `brew install graphviz`, optional) |
+| Windows | install [MSYS2](https://www.msys2.org) or MinGW-w64, then see "Without make" below |
+
+### 3. Build and check that it works
+
+```
+make             # builds build/pdr
+make test        # 31 engine tests + 30 command-line tests; ends with "all command-line tests passed"
+make demo        # full report on the bundled sample project
+```
+
+### 4. Install it, so `pdr` works in any folder
+
+```
+make install     # copies pdr to ~/.local/bin
+pdr --help
+```
+
+If the shell says `pdr: command not found`, `~/.local/bin` is not on your PATH. Add this line to
+`~/.bashrc` (or `~/.zshrc`) and open a new terminal:
+
+```
+export PATH="$HOME/.local/bin:$PATH"
+```
+
+To install somewhere else: `make install PREFIX=/usr/local` (may need `sudo`). `make uninstall` removes
+it (use the same `PREFIX`), and `make clean` deletes the `build/` folder.
+
+### Without make (Windows, or no make installed)
+
+```
+g++ -std=c++17 -O2 -o pdr src/*.cpp            # from the cpp/ folder; on Windows use -o pdr.exe
+./pdr ../sample/fad_demo --check               # try it on the sample
+```
+
+### Other make targets
+
+```
+make bench       # timings -> build/bench.csv and charts (about a minute)
+make graph       # draw the sample and this program as SVG (needs graphviz)
+make dist        # the zip to hand in -> build/v5-package-dependency-resolver.zip
+```
+
+## What the C++ version adds
+
+It started as a port of the JavaScript engine (the graph, hash table, min-heap, tries and bitsets are
+written by hand) and adds things the web version does not have:
 
 - **C/C++ projects**: `#include "x.h"` and `#include <x.h>` are read, so the tool can analyse its own source
 - **only real circular imports**: imports inside functions, under `if TYPE_CHECKING:` or under
@@ -29,17 +98,9 @@ version does not have:
 - **graph images**: `--dot` writes the graph for Graphviz
 - **a benchmark**: `make bench` measures the algorithms on generated projects of up to a million files
 
-```
-cd cpp
-make                                   # build/pdr
-make test                              # 31 engine tests + 30 command-line tests
-make bench                             # timings -> build/bench.csv and charts (about a minute)
-make dist                              # the zip to hand in -> build/v5-package-dependency-resolver.zip
-make graph                             # draw the sample and this program as SVG (needs graphviz)
-make install                           # copy pdr to ~/.local/bin, so it runs from any folder
-```
+## Usage
 
-Then `cd` into any project and run `pdr`. Without a folder it analyses the current folder, and files
+Go into any project and run `pdr`. Without a folder it analyses the current folder, and files
 can be named by file name alone (`main.py`) or by the end of their path (`utils/paths.py`):
 
 ```
@@ -57,7 +118,7 @@ pdr ~/some/other/project --check       # or name a folder
 pdr --help
 ```
 
-Without installing, use `./build/pdr` from `cpp/` instead of `pdr`. `make uninstall` removes it.
+Without installing, use `./build/pdr` from `cpp/` instead of `pdr`.
 
 ### Terminal and CI use
 
@@ -93,8 +154,6 @@ project the step is:
 - name: Check imports
   run: pdr --check
 ```
-
-Without `make` (Windows / Code::Blocks): `g++ -std=c++17 -O2 -o pdr cpp/src/*.cpp`
 
 | File | Contents |
 |---|---|
